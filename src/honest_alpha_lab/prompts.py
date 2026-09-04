@@ -146,6 +146,31 @@ NUMERICAL_VALIDATOR_PROMPT = PromptTemplate(
     ),
 )
 
+STRATEGY_BUILDER_PROMPT = PromptTemplate(
+    name="strategy-builder",
+    agent_kind=AgentKind.STRATEGY_BUILDER,
+    version="1",
+    instructions=(
+        "Propose executable research strategy sleeves from the supplied signal catalog identifiers. "
+        "Choose linear_equal or rank_equal combinations and only the allowed horizon, side and "
+        "rebalance rules. The trusted compiler assigns equal numerical coefficients, derives "
+        "development sleeve returns and runs the fixed DAILY OHLC next-bar-limit backtest engine. "
+        "Intraday and close-to-open timings are unsupported here; horizon is the engine signal-age "
+        "limit, not a guaranteed holding period or forced exit. Do not supply coefficients "
+        "or final portfolio weights. Do not change input paths, hashes, signal timing, missingness, "
+        "training intervals, execution or costs. Do not authorize orders, access a broker, approve "
+        "strategies, or claim independent point-in-time verification. All results are research only."
+    ),
+    output_contract=(
+        "Use the existing CLI proposal schema: alpha_candidates must be []; output.summary is text; "
+        "each output.notes entry is a JSON-encoded blueprint object with exactly strategy_id, name, "
+        "signal_ids (unique catalog IDs), combination (linear_equal or rank_equal), horizon_days "
+        "(one integer), side (long_only, short_only or long_short), rebalance_days (integer), "
+        "execution (next_bar_limit), and rationale. No other blueprint keys. Include nonnegative usage."
+    ),
+)
+
+
 PROMPTS: dict[str, PromptTemplate] = {
     template.name: template
     for template in (
@@ -154,6 +179,7 @@ PROMPTS: dict[str, PromptTemplate] = {
         SEC_EDGAR_EVENT_MINING_PROMPT,
         ALTERNATIVE_DATASET_PROMPT,
         NUMERICAL_VALIDATOR_PROMPT,
+        STRATEGY_BUILDER_PROMPT,
     )
 }
 

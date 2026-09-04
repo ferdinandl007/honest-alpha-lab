@@ -8,8 +8,8 @@ An always-on research lab for discovering, testing and remembering equity signal
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![Stage: Research Preview](https://img.shields.io/badge/stage-research_preview-F59E0B?style=flat-square)](docs/implementation-status.md)
-[![536 tests locally verified](https://img.shields.io/badge/tests-536_locally_verified-16A34A?style=flat-square)](research/state-portfolio-integration-2026-09-05.md)
-[![No live trading](https://img.shields.io/badge/live_trading-none-64748B?style=flat-square)](#the-honest-part)
+[![658 tests locally verified](https://img.shields.io/badge/tests-658_locally_verified-16A34A?style=flat-square)](research/books-console-verification-2026-09-05.md)
+[![Live disabled by default](https://img.shields.io/badge/live-disabled_by_default-64748B?style=flat-square)](docs/books-and-control-room.md)
 
 [Get started](#get-started) · [How it works](#how-it-works) · [Onboarding](docs/onboarding.md) · [Research library](research-vault/literature/index.md) · [Contribute](CONTRIBUTING.md)
 
@@ -119,7 +119,9 @@ Our design keeps these distinctions explicit:
 - **A sealed test is not another feedback channel.** Its outcomes stay out of
   the research loop.
 
-**No live orders. No brokerage integration. No LLM fine-tuning. No agent self-approval.**
+**Live execution disabled by default. No LLM fine-tuning. No agent self-approval.**
+An optional Webull HK adapter now has separately armed sandbox/production routes.
+No real orders were placed during development; this is not live-readiness certification.
 
 ## What actually runs today
 
@@ -133,6 +135,10 @@ Our design keeps these distinctions explicit:
 | PostgreSQL numerical queue and measured development feedback | Implemented |
 | Gaussian HMM / non-Markov state analysis | Integrated into numerical reports and research feedback; fold-local diagnostics |
 | Conventional allocation and daily research backtesting | Integrated signal handoff, three allocation comparisons, audited artifacts and recurring jobs |
+| Signal-to-strategy agent | CLI blueprints compiled into causal daily combinations and conventional backtests |
+| Flexible session books | Historical close-to-next-open replay with intraday prices and explicit exchange calendars |
+| Persistent paper books | Daily historical and forward shadow ingestion; normalized feed supplied by caller |
+| Private trade control room | Book policies, approval inbox and separately armed Webull US limit-order adapter; not deployed |
 | Provider-based hard model-spend enforcement | **Not complete** |
 | End-to-end real-data search benchmarks and full admission | **Not complete** |
 | Deployed, multi-day-certified 24/7 operation | **Not complete** |
@@ -143,6 +149,11 @@ See the [implementation audit](docs/implementation-status.md) for the longer ver
 numerical predictions to dated execution inputs, explicit costs and reproducible
 portfolio reports. Missing state data are reported explicitly. These integrations
 do not certify a profitable strategy or replace independent data validation.
+
+[Signals → strategies → books → control room](docs/books-and-control-room.md)
+documents session timing, paper ledgers, private Tailscale hosting and the exact
+boundaries of the optional live adapter. Exact live auction scheduling and
+account-wide reconciliation/risk remain unfinished.
 
 ### A real run, not a mock dashboard
 

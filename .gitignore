@@ -10,6 +10,13 @@
 
 # Python / test / packaging output.
 .venv/
+node_modules/
+.wrangler/
+.vinext/
+.next/
+web/dist/
+web/out/
+*.tsbuildinfo
 venv/
 __pycache__/
 *.py[cod]
@@ -41,4 +48,3 @@ auth.json
 *.db-*
 *.log
 *.parquet
-

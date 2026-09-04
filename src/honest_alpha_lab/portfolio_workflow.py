@@ -68,7 +68,7 @@ def portfolio_engine_identity():
     directory = Path(__file__).resolve().parent
     return {"python": sys.version, "source_hashes": {
         name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
-        for name in ("portfolio_workflow.py", "portfolio.py", "strategies.py", "contracts.py")}}
+        for name in ("portfolio_workflow.py", "portfolio.py", "strategies.py", "contracts.py", "book_regimes.py", "regimes.py")}}
 
 
 def _date(value):
@@ -153,7 +153,7 @@ def _run(request, artifact_store):
     required = {"bars_csv", "signals_csv", "training_returns_csv", "scope",
                 "development_start", "development_end", "test_start", "test_end", "execution_policy"}
     optional = {"initial_cash", "allocation_policy", "output_directory", "signal_handoff_hashes",
-                "strategies", "strategy_ids", "input_hashes"}
+                "strategies", "strategy_ids", "input_hashes", "market_history_csv"}
     if required - request.keys() or request.keys() - required - optional:
         raise ContractError(f"missing or unknown request keys: missing={sorted(required - request.keys())}, "
                             f"unknown={sorted(request.keys() - required - optional)}")
@@ -206,6 +206,8 @@ def _run(request, artifact_store):
         raise ContractError("initial_cash must be finite and positive")
     blobs = {key: Path(request[key]).read_bytes() for key in
              ("bars_csv", "signals_csv", "training_returns_csv")}
+    if request.get("market_history_csv"):
+        blobs["market_history_csv"] = Path(request["market_history_csv"]).read_bytes()
     hashes = {key: hashlib.sha256(value).hexdigest() for key, value in blobs.items()}
     hashes = {key.removesuffix("_csv"): value for key, value in hashes.items()}
     if "input_hashes" in request and request["input_hashes"] != hashes:
@@ -287,6 +289,11 @@ def _run(request, artifact_store):
               "allocation_timing": "frozen_before_test", "training_dates": dates,
               "request": dict(request), "strategies": {k: asdict(v) for k, v in strategies.items()},
               "comparisons": comparisons}
+    if "market_history_csv" in blobs:
+        from .book_regimes import book_regime_analysis
+        report["book_regimes"] = book_regime_analysis(blobs["market_history_csv"], comparisons, str(de))
+    else:
+        report["book_regimes"] = {"status": "not_configured", "reason": "supply market_history_csv for prior-day market-state analysis"}
     report = json.loads(_json(report))
     if artifact_store is None and request.get("output_directory"):
         artifact_store = LocalArtifactStore(request["output_directory"])

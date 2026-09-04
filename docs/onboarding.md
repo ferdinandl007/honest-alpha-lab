@@ -16,7 +16,12 @@ benchmarking, unrestricted research-workspace integration and several operationa
 and validation connections are still unfinished. A green test suite is evidence
 about software behavior—not evidence of profitable trading strategies.
 
-There is no live trading, brokerage integration or LLM fine-tuning in this phase.
+Live execution remains off by default, and there is no LLM fine-tuning. The owner's
+execution extension now adds a strategy builder, historical session books,
+persistent daily paper ledgers and a private approval console with an optional,
+separately armed Webull HK production route. See [books and control room](books-and-control-room.md)
+for current interfaces and limitations. No live deployment or real order test has
+been performed; account-wide risk and reconciliation remain required.
 
 ### The intended division of responsibility
 

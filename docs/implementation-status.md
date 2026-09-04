@@ -5,6 +5,12 @@ global optimality or profitable alpha; compare alternatives on reproducible evid
 
 ## Requirements and completion evidence
 
+New execution extension: [books and control room](books-and-control-room.md).
+Includes strategy blueprints, persistent daily shadow books, historical session
+timing and an optional separately armed production broker route. This extension
+supersedes older no-broker implementation claims, not the historical mission text.
+No live orders, account-specific broker certification or remote deployment occurred.
+
 Latest integration: [state analysis and portfolio workflow](state-and-portfolio-workflow.md).
 The two previously disconnected components now have end-to-end software paths:
 both state methods appear in numerical reports and development feedback, and dated

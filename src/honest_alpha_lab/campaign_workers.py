@@ -29,6 +29,9 @@ def execute(lease, work_root: Path):
     from .postgres_store import PostgresStore
 
     payload = lease.spec.payload
+    if lease.spec.kind == "execution":
+        from .trade_control import TradeControl
+        return {"execution_results": TradeControl(payload["control_state"]).dispatch_ready()}
     if lease.spec.kind == "portfolio":
         from .portfolio_workflow import portfolio_engine_identity, run_portfolio_workflow
 

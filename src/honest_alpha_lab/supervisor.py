@@ -32,7 +32,7 @@ class CampaignSpec:
     retry_delay_seconds: int = 30
 
     def __post_init__(self):
-        if self.kind not in {"proposal", "numerical", "portfolio"} or not isinstance(self.payload, dict):
+        if self.kind not in {"proposal", "numerical", "portfolio", "execution"} or not isinstance(self.payload, dict):
             raise ContractError("campaign needs a supported kind and object payload")
         json.dumps(self.payload, allow_nan=False)
         for name in ("interval_seconds", "timeout_seconds", "max_attempts", "max_jobs_per_utc_day", "retry_delay_seconds"):

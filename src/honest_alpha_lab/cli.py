@@ -187,6 +187,46 @@ def _backtest_portfolio(args: argparse.Namespace) -> int:
     return 0
 
 
+def _strategy_and_books(args: argparse.Namespace) -> int:
+    from .artifacts import LocalArtifactStore
+    request = json.loads(Path(args.request).read_text())
+    if args.command == "build-strategies":
+        from .strategy_builder import run_strategy_agent
+        result = run_strategy_agent(request, args.output_directory)
+    elif args.command == "session-backtest":
+        from .session_strategies import run_session_backtest
+        result = run_session_backtest(request)
+    elif args.command == "paper-book":
+        from .paper_trading import run_paper_trading
+        result = run_paper_trading(request)
+    else:
+        raise ValueError("unknown book workflow")
+    store = LocalArtifactStore(args.output_directory)
+    digest = store.put(json.dumps(result, sort_keys=True, default=str, allow_nan=False).encode())
+    print(json.dumps({"report_artifact": str(store.root / digest), "result": result}, default=str, allow_nan=False))
+    return 0
+
+
+def _console(args: argparse.Namespace) -> int:
+    from .console_server import serve_console
+    serve_console(state=args.state, paper_db=args.paper_db, static_root=args.static_root,
+                  port=args.port, origin=args.origin)
+    return 0
+
+
+def _webull_data(args: argparse.Namespace) -> int:
+    from .artifacts import LocalArtifactStore
+    from .webull_paper import WebullHKClient
+    client = WebullHKClient(mode=args.mode)
+    result = client.history(args.symbol, category=args.category, count=args.count)
+    store = LocalArtifactStore(args.output_directory)
+    digest = store.put(json.dumps({"provider": "webull_hk", "mode": args.mode,
+        "symbol": args.symbol, "category": args.category, "raw_response": result,
+        "point_in_time_verified": False}, allow_nan=False).encode())
+    print(json.dumps({"data_artifact": str(store.root / digest), "point_in_time_verified": False}))
+    return 0
+
+
 def _proposal_json(candidate) -> dict[str, object]:
     return {
         "candidate_id": candidate.candidate_id,
@@ -343,6 +383,25 @@ def _parser() -> argparse.ArgumentParser:
     portfolio.add_argument("--request", required=True)
     portfolio.add_argument("--output-directory", default="var/portfolio-artifacts")
     portfolio.set_defaults(handler=_backtest_portfolio)
+    for command in ("build-strategies", "session-backtest", "paper-book"):
+        operation = subcommands.add_parser(command)
+        operation.add_argument("--request", required=True)
+        operation.add_argument("--output-directory", default="var/book-artifacts")
+        operation.set_defaults(handler=_strategy_and_books)
+    console = subcommands.add_parser("serve-console", help="private operator approval console; live disabled by default")
+    console.add_argument("--state", default="var/control/control.sqlite")
+    console.add_argument("--paper-db", default="var/paper/books.sqlite")
+    console.add_argument("--static-root", default="web/dist/client")
+    console.add_argument("--port", type=int, default=8787)
+    console.add_argument("--origin", help="exact private HTTPS origin when using Tailscale Serve")
+    console.set_defaults(handler=_console)
+    data = subcommands.add_parser("webull-data", help="read-only Webull HK historical data collection")
+    data.add_argument("--mode", choices=("sandbox", "data_only"), default="sandbox")
+    data.add_argument("--symbol", required=True)
+    data.add_argument("--category", choices=("US_STOCK", "HK_STOCK"), default="US_STOCK")
+    data.add_argument("--count", type=int, default=200)
+    data.add_argument("--output-directory", default="var/webull-artifacts")
+    data.set_defaults(handler=_webull_data)
     freeze = subcommands.add_parser("freeze-run", help="validator service: lock a persistent numerical run")
     freeze.add_argument("--run-id", required=True)
     freeze.add_argument("--plan", required=True)

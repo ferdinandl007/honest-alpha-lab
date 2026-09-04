@@ -18,6 +18,7 @@ class AgentKind(str, Enum):
     ALTERNATIVE_DATA = "alternative_data"
     ALTERNATIVE_DATASET_CREATOR = "alternative_dataset_creator"
     NUMERICAL_VALIDATOR = "numerical_validator"
+    STRATEGY_BUILDER = "strategy_builder"
 
 
 class AlphaStatus(str, Enum):
