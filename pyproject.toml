@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "honest-alpha-lab"
+version = "0.1.0"
+description = "Trustworthy Phase-1 research platform for agent-generated equity alpha"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+analytics = ["numpy>=1.26", "pandas>=2.2", "pyarrow>=17", "duckdb>=1.0"]
+models = ["scikit-learn>=1.5", "lightgbm>=4.5", "hmmlearn>=0.3"]
+storage = ["psycopg[binary]>=3.2"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+lint.ignore = ["E501"]

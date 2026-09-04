@@ -1,0 +1,12 @@
+{
+  "agents": [
+    {
+      "name": "codex",
+      "executable": "codex",
+      "command_prefix": ["exec"],
+      "sandbox": "read-only",
+      "timeout_seconds": 900
+    }
+  ],
+  "task_store": "var/agent-tasks"
+}

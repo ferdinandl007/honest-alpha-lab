@@ -1,0 +1,44 @@
+# Synced/private project context: never publish.
+/AGENTS.md
+/sources/
+/var/
+/data/
+/artifacts/
+/research/requests/
+/research-vault/*
+!/research-vault/literature/
+
+# Python / test / packaging output.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Credentials and local configuration.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+auth.json
+.codex/
+.DS_Store
+
+# Runtime databases, downloaded data and logs.
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+*.parquet
+

@@ -1,0 +1,9 @@
+{
+  "max_attempts": 20,
+  "max_total_body_bytes": 20000000,
+  "max_call_body_bytes": 1000000,
+  "timeout_seconds": 30,
+  "max_redirects": 3,
+  "minimum_interval_seconds": 1.0,
+  "user_agent": "HonestAlphaLabResearch/0.1"
+}

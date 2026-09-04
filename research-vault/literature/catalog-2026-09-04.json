@@ -1,0 +1,352 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-09-04",
+  "scope": "Bounded literature review; source depth varies. No paper performance reproduced.",
+  "policy": {
+    "sealed_results_included": false,
+    "eligible_for_historical_agent_replay": false,
+    "mutates_research_policy": false
+  },
+  "papers": [
+    {
+      "id": "alphagen-2023",
+      "title": "Generating Synergistic Formulaic Alpha Collections via Reinforcement Learning",
+      "year": 2023,
+      "lane": "symbolic",
+      "url": "https://arxiv.org/abs/2306.12964",
+      "repo": "https://github.com/ICT-FinD-Lab/alphagen",
+      "depth": "abstract_and_author_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/alphagen-2023.md",
+      "related_papers": [
+        "alphaforge-2024",
+        "alphaprobe-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "alphaforge-2024",
+      "title": "AlphaForge: A Framework to Mine and Dynamically Combine Formulaic Alpha Factors",
+      "year": 2024,
+      "lane": "symbolic_combination",
+      "url": "https://arxiv.org/html/2406.18394v1",
+      "depth": "methods_and_experimental_setup",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/alphaforge-2024.md",
+      "related_papers": [
+        "alphagen-2023",
+        "rd-agent-quant-2025"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "alphaagent-2025",
+      "title": "AlphaAgent: LLM-Driven Alpha Mining with Regularized Exploration to Counteract Alpha Decay",
+      "year": 2025,
+      "lane": "symbolic",
+      "url": "https://arxiv.org/html/2502.16789v1",
+      "depth": "methods_sections",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/alphaagent-2025.md",
+      "related_papers": [
+        "alphaprobe-2026",
+        "quantaalpha-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "rd-agent-quant-2025",
+      "title": "R&D-Agent-Quant: A Multi-Agent Framework for Data-Centric Factors and Model Joint Optimization",
+      "year": 2025,
+      "lane": "orchestration",
+      "url": "https://arxiv.org/html/2505.15155v2",
+      "repo": "https://github.com/microsoft/RD-Agent",
+      "depth": "methods_and_experimental_setup_and_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/rd-agent-quant-2025.md",
+      "related_papers": [
+        "qlib-2020",
+        "factor-miner-2026",
+        "alphabench-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "alphabench-2026",
+      "title": "AlphaBench: Benchmarking Large Language Models in Formulaic Alpha Factor Mining",
+      "year": 2026,
+      "lane": "benchmark",
+      "url": "https://alphabench.cc/",
+      "repo": "https://github.com/CityU-MLO/AlphaBench",
+      "depth": "author_project_and_repository_paper_access_blocked",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/alphabench-2026.md",
+      "related_papers": [
+        "rd-agent-quant-2025",
+        "alphaeval-2025",
+        "agonalpha-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "alphaprobe-2026",
+      "title": "AlphaPROBE: Alpha Mining via Principled Retrieval and On-graph Biased Evolution",
+      "year": 2026,
+      "lane": "research_memory",
+      "url": "https://arxiv.org/html/2602.11917v1",
+      "repo": "https://github.com/gta0804/AlphaPROBE",
+      "depth": "methods_and_experimental_setup_and_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/alphaprobe-2026.md",
+      "related_papers": [
+        "alphaagent-2025",
+        "factor-miner-2026",
+        "quantaalpha-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "factor-miner-2026",
+      "title": "FactorMiner: A Self-Evolving Agent with Skills and Experience Memory for Financial Alpha Discovery",
+      "year": 2026,
+      "lane": "research_memory",
+      "url": "https://arxiv.org/html/2602.14670v1",
+      "depth": "methods_and_experimental_setup",
+      "code": "runnable_implementation_not_verified",
+      "replication_status": "not_run",
+      "note": "literature/factor-miner-2026.md",
+      "related_papers": [
+        "alphaprobe-2026",
+        "rd-agent-quant-2025"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "quantaalpha-2026",
+      "title": "QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining",
+      "year": 2026,
+      "lane": "search",
+      "url": "https://arxiv.org/html/2602.07085v1",
+      "repo": "https://github.com/QuantaAlpha/QuantaAlpha",
+      "depth": "methods_and_experimental_setup_and_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/quantaalpha-2026.md",
+      "related_papers": [
+        "alphaagent-2025",
+        "alphaprobe-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "alphaeval-2025",
+      "title": "AlphaEval: A Comprehensive and Efficient Evaluation Framework for Formula Alpha Mining",
+      "year": 2025,
+      "lane": "evaluation",
+      "url": "https://arxiv.org/html/2508.13174v1",
+      "depth": "framework_overview",
+      "code": "runnable_implementation_not_verified",
+      "replication_status": "not_run",
+      "note": "literature/alphaeval-2025.md",
+      "related_papers": [
+        "alphabench-2026",
+        "deflated-sharpe-2014",
+        "backtest-overfitting"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "agonalpha-2026",
+      "title": "AgonAlpha: Autonomous Alpha Discovery via Prompt Economy and Scalable Agentic Search",
+      "year": 2026,
+      "lane": "orchestration_review",
+      "url": "https://arxiv.org/html/2608.11250v1",
+      "repo": "https://github.com/AutoResearch-Factory/AgonAlpha",
+      "depth": "methods_experiments_and_repository",
+      "code": "orchestration_only_repository_inspected",
+      "replication_status": "not_run",
+      "note": "literature/agonalpha-2026.md",
+      "related_papers": [
+        "alphabench-2026",
+        "agora-2026",
+        "financial-llm-bias-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "gpt-lookahead-2023",
+      "title": "Assessing Look-Ahead Bias in Stock Return Predictions Generated By GPT Sentiment Analysis",
+      "year": 2023,
+      "lane": "text_validation",
+      "url": "https://arxiv.org/abs/2309.17322",
+      "depth": "abstract",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/gpt-lookahead-2023.md",
+      "related_papers": [
+        "financial-llm-bias-2026",
+        "lazy-prices"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "financial-llm-bias-2026",
+      "title": "Evaluating LLMs in Finance Requires Explicit Bias Consideration",
+      "year": 2026,
+      "lane": "validation",
+      "url": "https://arxiv.org/html/2602.14233v1",
+      "depth": "taxonomy_and_recommendations",
+      "code": "not_applicable",
+      "replication_status": "not_run",
+      "note": "literature/financial-llm-bias-2026.md",
+      "related_papers": [
+        "gpt-lookahead-2023",
+        "execution-reproducibility-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "execution-reproducibility-2026",
+      "title": "Beyond Agent Architecture: Execution Assumptions and Reproducibility in LLM-Based Trading Systems",
+      "year": 2026,
+      "lane": "validation",
+      "url": "https://arxiv.org/html/2606.08285v1",
+      "depth": "audit_scope_and_methodological_example",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/execution-reproducibility-2026.md",
+      "related_papers": [
+        "financial-llm-bias-2026",
+        "backtest-overfitting"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "backtest-overfitting",
+      "title": "The Probability of Backtest Overfitting",
+      "year": 2015,
+      "lane": "statistics",
+      "url": "https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf",
+      "depth": "author_hosted_abstract_search_extract_full_fetch_failed",
+      "code": "not_applicable",
+      "replication_status": "not_run",
+      "note": "literature/backtest-overfitting.md",
+      "related_papers": [
+        "deflated-sharpe-2014",
+        "alphaeval-2025"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "deflated-sharpe-2014",
+      "title": "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality",
+      "year": 2014,
+      "lane": "statistics",
+      "url": "https://www.davidhbailey.com/dhbpapers/deflated-sharpe.pdf",
+      "depth": "abstract_and_statistical_method",
+      "code": "not_applicable",
+      "replication_status": "not_run",
+      "note": "literature/deflated-sharpe-2014.md",
+      "related_papers": [
+        "backtest-overfitting",
+        "alphaeval-2025"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "lazy-prices",
+      "title": "Lazy Prices",
+      "year": 2018,
+      "lane": "text_strategy",
+      "url": "https://www.nber.org/papers/w25084",
+      "depth": "primary_abstract_and_publication_metadata",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/lazy-prices.md",
+      "related_papers": [
+        "gpt-lookahead-2023",
+        "alphaagent-2025"
+      ],
+      "related_candidates": [
+        "f656ee96-8cb1-45d5-a275-c47f2e92e82d",
+        "f508f120-02a5-4eb5-b84f-716e6607f947"
+      ]
+    },
+    {
+      "id": "satellite-information-risk",
+      "title": "Is Information Risk Priced? New Evidence from Outer Space",
+      "year": 2024,
+      "lane": "alternative_data",
+      "url": "https://pubsonline.informs.org/doi/10.1287/mnsc.2023.00713",
+      "depth": "publisher_abstract",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/satellite-information-risk.md",
+      "related_papers": [
+        "autodataset-2026",
+        "lazy-prices"
+      ],
+      "related_candidates": [
+        "1b2fcc0b-c27b-4bc9-81ca-b7d841e60d79"
+      ]
+    },
+    {
+      "id": "qlib-2020",
+      "title": "Qlib: An AI-oriented Quantitative Investment Platform",
+      "year": 2020,
+      "lane": "infrastructure",
+      "url": "https://arxiv.org/abs/2009.11189",
+      "repo": "https://github.com/microsoft/qlib",
+      "depth": "abstract_and_official_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/qlib-2020.md",
+      "related_papers": [
+        "rd-agent-quant-2025",
+        "alphagen-2023",
+        "alphabench-2026"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "autodataset-2026",
+      "title": "AutoDataset: A Lightweight System for Continuous Dataset Discovery and Search",
+      "year": 2026,
+      "lane": "dataset_discovery",
+      "url": "https://arxiv.org/html/2603.07271v1",
+      "repo": "https://github.com/EIT-NLP/AutoDataset",
+      "depth": "pipeline_and_case_study_and_repository",
+      "code": "repository_inspected_not_executed",
+      "replication_status": "not_run",
+      "note": "literature/autodataset-2026.md",
+      "related_papers": [
+        "satellite-information-risk",
+        "rd-agent-quant-2025"
+      ],
+      "related_candidates": []
+    },
+    {
+      "id": "agora-2026",
+      "title": "AI Trading's Alpha Singularity: Emergent Market Reasoning through Agent-to-Agent Self-Evolution",
+      "year": 2026,
+      "lane": "research_watchlist",
+      "url": "https://arxiv.org/html/2606.29194v1",
+      "depth": "abstract_experiments_and_limitations",
+      "code": "not_verified",
+      "replication_status": "not_run",
+      "note": "literature/agora-2026.md",
+      "related_papers": [
+        "agonalpha-2026",
+        "financial-llm-bias-2026"
+      ],
+      "related_candidates": []
+    }
+  ]
+}
+

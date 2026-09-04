@@ -1,0 +1,24 @@
+# Python 3.12 / macOS arm64 environment used for implementation verification.
+# Pins record the tested environment, not a cross-platform wheel/hash lock.
+duckdb==1.5.5
+hmmlearn==0.3.3
+iniconfig==2.3.0
+joblib==1.5.3
+lightgbm==4.7.0
+narwhals==2.25.0
+numpy==2.5.2
+packaging==26.3
+pandas==3.0.5
+pluggy==1.6.0
+psycopg==3.3.4
+psycopg-binary==3.3.4
+pyarrow==25.0.1
+Pygments==2.21.0
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+ruff==0.16.5
+scikit-learn==1.9.0
+scipy==1.18.1
+six==1.17.0
+threadpoolctl==3.6.0
+typing_extensions==4.16.0
