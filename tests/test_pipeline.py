@@ -63,6 +63,9 @@ def test_postgres_proposal_numerical_worker_feedback_and_duplicate(cluster, tmp_
     assert feedback[0]["trial_id"] == str(first.trial_id)
     assert "incremental_rank_ic" in feedback[0]
     assert feedback[0]["financial_alpha_verified"] is False
+    assert {item["method"] for item in feedback[0]["regime_diagnostics"]} == {"hmm", "gaussian_mixture"}
+    assert feedback[0]["signals_artifact_hash"] == result["signals_artifact_hash"]
+    assert feedback[0]["strategy_id"] == result["formula_hash"]
     assert proposer.verify_chain(run_id)
 
 

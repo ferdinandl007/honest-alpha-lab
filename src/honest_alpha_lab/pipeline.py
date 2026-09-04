@@ -6,7 +6,6 @@ proposal, never a database credential, callable, file path or executable command
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import math
 import multiprocessing
@@ -34,7 +33,7 @@ def engine_fingerprint() -> str:
     """Bind plans to this installed source and the numerical runtime versions."""
     directory = Path(__file__).resolve().parent
     modules = ("pipeline.py", "dsl.py", "panel.py", "snapshots.py", "numerical.py",
-               "contracts.py", "artifacts.py")
+               "contracts.py", "artifacts.py", "regimes.py", "prediction_artifacts.py")
     try:
         lightgbm_version = version("lightgbm")
     except PackageNotFoundError:
@@ -45,7 +44,7 @@ def engine_fingerprint() -> str:
         "python": sys.version,
         "lightgbm": lightgbm_version,
         "packages": {name: version(name) for name in
-                     ("numpy", "pandas", "pyarrow", "duckdb", "scikit-learn")},
+                     ("numpy", "pandas", "pyarrow", "duckdb", "scikit-learn", "hmmlearn", "scipy")},
     })
 
 
@@ -93,8 +92,14 @@ class NumericalPlan:
 
     @classmethod
     def from_payload(cls, value):
+        from .regimes import RegimeConfig
+
         value = dict(value)
-        value["config"] = WalkForwardConfig(**value["config"])
+        configuration = dict(value["config"])
+        if "regime_configs" in configuration:
+            configuration["regime_configs"] = tuple(RegimeConfig(**item)
+                                                     for item in configuration["regime_configs"])
+        value["config"] = WalkForwardConfig(**configuration)
         return cls(**value)
 
 
@@ -170,11 +175,9 @@ def submit_formula(proposer: PostgresStore, run_id: str, expression: str,
 def _evaluate_child(connection, payload, snapshot_root, artifact_root):
     """Trusted fixed worker target. No arbitrary code is accepted from a proposal."""
     try:
-        import numpy as np
-        import pandas as pd
-
         from .numerical import WalkForwardEvaluator
         from .panel import estimate_incremental_beta, next_open_residual_labels
+        from .prediction_artifacts import store_predictions
         from .snapshots import ParquetSnapshot
 
         plan = NumericalPlan.from_payload(payload["plan"])
@@ -203,17 +206,13 @@ def _evaluate_child(connection, payload, snapshot_root, artifact_root):
         report, predictions = WalkForwardEvaluator(plan.config).evaluate(
             formula, panel, labels, snapshot_hash=plan.snapshot_hash,
             baseline={name: Formula.parse(expression) for name, expression in plan.baseline})
-        frame = pd.DataFrame({"session": np.repeat(panel.dates, len(panel.assets)),
-                              "asset": np.tile(panel.assets, len(panel.dates)), "score": predictions.ravel()})
-        buffer = io.BytesIO()
-        frame.to_parquet(buffer, index=False)
         artifacts = LocalArtifactStore(artifact_root)
-        predictions_hash = artifacts.put(buffer.getvalue())
+        handoff = store_predictions(snapshot, panel, predictions, formula.formula_hash, artifacts)
         report_hash = artifacts.put(json.dumps(asdict(report), sort_keys=True,
                                                 allow_nan=False).encode())
         connection.send({"status": "evaluated", "scope": "development",
                          "formula_hash": formula.formula_hash, "snapshot_hash": plan.snapshot_hash,
-                         "report_artifact_hash": report_hash, "predictions_artifact_hash": predictions_hash,
+                         "report_artifact_hash": report_hash, **handoff,
                          "snapshot_purpose": purpose, "financial_alpha_verified": False})
     except (ContractError, FileNotFoundError) as exc:
         connection.send({"status": "not_evaluated", "scope": "development",
@@ -361,6 +360,15 @@ def development_feedback(reader: PostgresStore, artifacts: LocalArtifactStore,
                         raise ContractError("feedback contains invalid numerical evidence")
                     summary[key] = value
                 summary["snapshot_purpose"] = result["snapshot_purpose"]
+                summary["regime_diagnostics"] = [
+                    {key: state.get(key) for key in (
+                        "method", "fold_index", "status", "diagnostic", "converged",
+                        "conditional_rank_ic", "conditional_baseline_rank_ic",
+                        "conditional_augmented_rank_ic", "conditional_incremental_rank_ic")}
+                    for state in report.get("regime_reports", [])
+                ]
+                summary["signals_artifact_hash"] = result.get("signals_artifact_hash")
+                summary["strategy_id"] = result.get("strategy_id")
             else:
                 summary["reason"] = result.get("reason", "not evaluated")
             summaries.append(summary)

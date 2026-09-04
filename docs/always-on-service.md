@@ -1,13 +1,17 @@
 # Always-on research service
 
 The product requirement is continuous, 24/7 signal discovery. The service now
-has a persistent campaign scheduler and real researcher/numerical handlers.
+has a persistent campaign scheduler and researcher, numerical and portfolio handlers.
 Individual jobs have finite deadlines and retry allowances; idle queues and
 daily dispatch limits do not terminate the service.
 
 This is a new implementation checkpoint, not a completed production deployment
 or a multi-day reliability certification. No service is installed at login or
 boot by importing this module or writing its configuration.
+
+Portfolio campaigns use frozen input hashes and archive all three conventional
+allocation comparisons. See [state and portfolio integration](state-and-portfolio-workflow.md)
+for the request schema, dated signal handoff and recovery behavior.
 
 ## Start and inspect
 

@@ -61,10 +61,13 @@ class HistoricalDataset:
     point_in_time_verified: bool
     bars: tuple[MarketBar, ...]
     signals: tuple[PointInTimeSignal, ...]
+    allow_unverified: bool = False
 
     def __post_init__(self) -> None:
-        if not self.snapshot_hash or not self.point_in_time_verified:
-            raise ContractError("backtesting requires a verified immutable PIT snapshot")
+        if not self.snapshot_hash or type(self.point_in_time_verified) is not bool:
+            raise ContractError("backtesting requires snapshot identity and explicit PIT status")
+        if not self.point_in_time_verified and self.allow_unverified is not True:
+            raise ContractError("backtesting requires a verified immutable PIT snapshot; research needs explicit allow_unverified")
         if not self.bars or not self.signals:
             raise ContractError("backtesting requires real bars and point-in-time signals")
         if any(signal.snapshot_hash != self.snapshot_hash for signal in self.signals):
@@ -103,10 +106,10 @@ class TraditionalAllocator:
         if any(len(row) < 2 for row in rows) or len({len(row) for row in rows}) != 1:
             raise ContractError("allocation needs aligned training returns with at least two periods")
         if self.policy.method == "equal_weight":
-            weights = _project_capped_simplex([1.0] * len(names), self.policy.max_sleeve_weight)
+            weights = [1.0 / len(names)] * len(names)
         elif self.policy.method == "inverse_volatility":
             inverse_vol = [1 / max(_std(row), 1e-8) for row in rows]
-            weights = _project_capped_simplex(inverse_vol, self.policy.max_sleeve_weight)
+            weights = _normalize_capped_proportions(inverse_vol, self.policy.max_sleeve_weight)
         else:
             covariance = _shrink_covariance(rows, self.policy.covariance_shrinkage)
             weights = _minimum_variance(covariance, self.policy.max_sleeve_weight, self.policy.iterations)
@@ -215,7 +218,11 @@ class PortfolioBacktester:
         dataset: HistoricalDataset,
         sleeve_allocation: Mapping[str, float],
         initial_cash: float = 1_000_000.0,
+        *,
+        allow_unverified: bool = False,
     ) -> BacktestResult:
+        if not dataset.point_in_time_verified and allow_unverified is not True:
+            raise ContractError("unverified research execution requires explicit allow_unverified=True")
         if not isfinite(initial_cash) or initial_cash <= 0:
             raise ContractError("initial cash must be finite and positive")
         if not sleeve_allocation or set(sleeve_allocation) - set(self.strategies):
@@ -542,6 +549,26 @@ def _minimum_variance(covariance: Sequence[Sequence[float]], cap: float, iterati
     for _ in range(iterations):
         gradient = [2 * sum(covariance[i][j] * weights[j] for j in range(size)) for i in range(size)]
         weights = _project_capped_simplex([weight - gradient[i] / scale for i, weight in enumerate(weights)], cap)
+    return weights
+
+
+def _normalize_capped_proportions(values: Sequence[float], cap: float) -> list[float]:
+    """Redistribute capped mass proportionally; Euclidean projection changes ratios."""
+    weights = [0.0] * len(values)
+    active = set(range(len(values)))
+    remaining = 1.0
+    while active:
+        total = sum(values[i] for i in active)
+        proposed = {i: remaining * values[i] / total for i in active}
+        capped = {i for i in active if proposed[i] > cap}
+        if not capped:
+            for i in active:
+                weights[i] = proposed[i]
+            break
+        for i in capped:
+            weights[i] = cap
+        remaining -= cap * len(capped)
+        active -= capped
     return weights
 
 

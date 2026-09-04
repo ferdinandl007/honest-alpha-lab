@@ -4,7 +4,7 @@
 
 `TraditionalAllocator` supports equal-weight, inverse-volatility, and diagonal-shrinkage long-only minimum-variance sleeve allocation. Allocation returns must come from a training window that ends before the test window. Weights are capped and frozen during the next test window; do not fit weights on the period being reported.
 
-`PortfolioBacktester` uses only a verified `HistoricalDataset` with point-in-time signals and OHLCV bars. Its research execution model has next-bar limit orders, participation caps, expiry of unfilled limits, borrow checks for new shorts, fixed stop loss and take-profit levels, and periodic sleeve rebalancing. If a bar reaches both a stop and target, it records the stop first. It has no broker, order router, or live-data adapter.
+`PortfolioBacktester` defaults to requiring a verified `HistoricalDataset`. The development workflow explicitly permits unverified research inputs and labels results accordingly; timestamp checks do not independently approve data. Its research execution model has next-bar limit orders, participation caps, expiry of unfilled limits, borrow checks for new shorts, fixed stop loss and take-profit levels, and periodic sleeve rebalancing. If a bar reaches both a stop and target, it records the stop first. It has no broker, order router, or live-data adapter.
 
 ## Required data
 
@@ -14,14 +14,19 @@ The runnable adapter expects three CSV files:
 
 - `bars.csv`: `day,asset,open,high,low,close,dollar_volume,borrow_available`
 - `signals.csv`: `strategy_id,asset,score,available_at,snapshot_hash`
-- `training_returns.csv`: `strategy_id,return` with aligned, pre-test sleeve returns.
+- `training_returns.csv`: `day,strategy_id,return,available_at` with identically aligned pre-test dates and return availability before the test starts.
 
-Run only after a dataset snapshot has passed PIT checks:
+Use the [integrated workflow](state-and-portfolio-workflow.md) and [request template](../config/portfolio.example.json). Independent PIT checks are still required before treating results as investment evidence:
 
 ```bash
-PYTHONPATH=src python3.12 scripts/run_portfolio_backtest.py \
-  --bars bars.csv --signals signals.csv --training-returns training_returns.csv \
-  --snapshot-hash <immutable-snapshot-hash> --output portfolio-backtest.json
+python -m honest_alpha_lab backtest-portfolio \
+  --request config/my-portfolio-request.json \
+  --output-directory var/portfolio-artifacts
 ```
 
 The output is an audit artifact (NAV path, simulated fills, rejected orders, and frozen sleeve allocation), not a live order ticket or an approved portfolio.
+
+The legacy script now delegates to this dated workflow and accepts `--request`
+and `--output-directory`. Undated training-return arguments are no longer accepted.
+Numerical prediction artifacts can supply custom sleeves, beyond the original 15
+candidate definitions. Supervisor portfolio campaigns support the same workflow.

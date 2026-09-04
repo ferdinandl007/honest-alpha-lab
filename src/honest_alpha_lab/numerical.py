@@ -14,6 +14,7 @@ import numpy as np
 from .contracts import ContractError, canonical_hash
 from .dsl import Formula
 from .panel import ForwardLabels, ResearchPanel, cross_sectional_rank
+from .regimes import RegimeConfig, RegimeFoldReport, walk_forward_regime_reports
 
 
 @dataclass(frozen=True)
@@ -28,8 +29,18 @@ class WalkForwardConfig:
     regularization: float = 1.0
     bootstrap_samples: int = 1000
     seed: int = 0
+    # Empty tuple explicitly opts out; tuple and nested frozen configs freeze policy.
+    regime_configs: tuple[RegimeConfig, ...] = (
+        RegimeConfig(method="hmm"), RegimeConfig(method="gaussian_mixture"))
+    regime_feature_window: int = 20
 
     def __post_init__(self):
+        if (type(self.regime_configs) is not tuple
+                or any(not isinstance(item, RegimeConfig) for item in self.regime_configs)
+                or len({item.method for item in self.regime_configs}) != len(self.regime_configs)):
+            raise ContractError("regime_configs must be a tuple of distinct frozen method configs")
+        if type(self.regime_feature_window) is not int or self.regime_feature_window < 2:
+            raise ContractError("regime_feature_window must be an integer >= 2")
         for name in ("min_train_days", "test_days", "min_assets", "min_train_rows",
                      "min_folds", "bootstrap_samples"):
             value = getattr(self, name)
@@ -85,6 +96,7 @@ class DevelopmentReport:
     runtime_versions: tuple[tuple[str, str], ...]
     scope: str = "development"
     portfolio_performance_verified: bool = False
+    regime_reports: tuple[RegimeFoldReport, ...] = ()
 
     @property
     def report_hash(self):
@@ -168,8 +180,9 @@ class WalkForwardEvaluator:
         library = [baseline[name].evaluate_panel(panel) for name in sorted(baseline)]
         all_features = np.stack([*library, score], axis=-1)
         target_ranks = cross_sectional_rank(labels.values)
-        valid_rows = (np.isfinite(all_features).all(axis=2)
-                      & np.isfinite(labels.values) & panel.eligible)
+        inference_rows = np.isfinite(all_features).all(axis=2) & panel.eligible
+        inference_rows[inference_rows.sum(axis=1) < config.min_assets] = False
+        valid_rows = inference_rows & np.isfinite(labels.values)
         # Groups must contain enough eligible stocks both in training and testing.
         valid_rows[valid_rows.sum(axis=1) < config.min_assets] = False
         folds, indices, raw_ics, base_ics, aug_ics = [], [], [], [], []
@@ -189,21 +202,24 @@ class WalkForwardEvaluator:
             test_mask = valid_rows.copy()
             test_mask[:test_start] = False
             test_mask[test_end:] = False
-            if train_mask.sum() < config.min_train_rows or not test_mask.any():
+            inference_mask = inference_rows.copy()
+            inference_mask[:test_start] = False
+            inference_mask[test_end:] = False
+            if train_mask.sum() < config.min_train_rows or not inference_mask.any():
                 continue
             train_day_indices = np.flatnonzero(train_mask.any(axis=1))
             if len(train_day_indices) < config.min_train_days:
                 continue
             x_train, y_train = all_features[train_mask], target_ranks[train_mask]
-            x_test = all_features[test_mask]
+            x_test = all_features[inference_mask]
             groups = train_mask.sum(axis=1)
             groups = groups[groups > 0]
             augmented = _fit_predict(config.model, x_train, y_train, x_test, groups, config)
             base = (_fit_predict(config.model, x_train[:, :-1], y_train, x_test[:, :-1],
                                  groups, config) if library else np.zeros(len(x_test)))
             augmented_panel, base_panel = np.full(panel.shape, np.nan), np.full(panel.shape, np.nan)
-            augmented_panel[test_mask], base_panel[test_mask] = augmented, base
-            prediction_panel[test_mask] = augmented
+            augmented_panel[inference_mask], base_panel[inference_mask] = augmented, base
+            prediction_panel[inference_mask] = augmented
             fold_raw, fold_base, fold_aug = [], [], []
             for day in range(test_start, test_end):
                 mask = test_mask[day]
@@ -267,6 +283,9 @@ class WalkForwardEvaluator:
             max_library_similarity=max((float(np.mean(x)) for x in similarity_by_library if x), default=0),
             score_coverage=measured_count / eligible_count if eligible_count else 0,
             model=config.model, label_convention=labels.convention,
+            regime_reports=walk_forward_regime_reports(
+                panel, folds, indices, raw_ics, base_ics, aug_ics, config.regime_configs,
+                window=config.regime_feature_window, min_assets=config.min_assets),
             runtime_versions=tuple((name, version(name)) for name in
                                    ("numpy", "scikit-learn", "lightgbm")
                                    if name != "lightgbm" or config.model == "lightgbm"),

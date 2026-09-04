@@ -1,11 +1,14 @@
-"""Strict CSV adapters for real historical backtest snapshots."""
+"""Legacy CSV readers; parsing is not independent historical-data approval.
+
+Use portfolio_workflow for dated training, content binding and audited execution.
+"""
 
 from __future__ import annotations
 
 import csv
+from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
-from typing import Mapping
 
 from .contracts import ContractError
 from .portfolio import HistoricalDataset, MarketBar, PointInTimeSignal
@@ -30,7 +33,7 @@ def load_csv_dataset(bars_path: str | Path, signals_path: str | Path, snapshot_h
                 _required(row, "strategy_id"), _required(row, "asset"), float(_required(row, "score")),
                 datetime.fromisoformat(_required(row, "available_at")), snapshot_hash,
             ))
-    return HistoricalDataset(snapshot_hash, True, tuple(bars), tuple(signals))
+    return HistoricalDataset(snapshot_hash, False, tuple(bars), tuple(signals), allow_unverified=True)
 
 
 def load_training_returns(path: str | Path) -> Mapping[str, tuple[float, ...]]:

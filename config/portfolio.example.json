@@ -1,0 +1,21 @@
+{
+  "scope": "development",
+  "bars_csv": "data/execution-bars.csv",
+  "signals_csv": "data/portfolio-signals.csv",
+  "training_returns_csv": "data/pre-test-sleeve-returns.csv",
+  "strategy_ids": ["profitable_growth", "low_beta_drift", "cash_yield_credibility"],
+  "development_start": "2015-01-01",
+  "development_end": "2019-12-31",
+  "test_start": "2020-01-02",
+  "test_end": "2022-12-30",
+  "allocation_policy": {"max_sleeve_weight": 0.5, "covariance_shrinkage": 0.25},
+  "execution_policy": {
+    "commission_bps": 1.0,
+    "slippage_bps": 5.0,
+    "annual_borrow_rate": 0.03,
+    "limit_offset_bps": 10.0,
+    "stop_loss_fraction": 0.08,
+    "take_profit_fraction": 0.16,
+    "max_asset_weight": 0.04
+  }
+}

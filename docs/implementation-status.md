@@ -5,6 +5,18 @@ global optimality or profitable alpha; compare alternatives on reproducible evid
 
 ## Requirements and completion evidence
 
+Latest integration: [state analysis and portfolio workflow](state-and-portfolio-workflow.md).
+The two previously disconnected components now have end-to-end software paths:
+both state methods appear in numerical reports and development feedback, and dated
+numerical signals feed the conventional portfolio comparison command and recurring
+supervisor jobs. Allocation weights are frozen before the internal test; holdings
+rebalance on each sleeve's schedule. Automatic refitting of allocation weights
+during a test is not implemented or implied.
+
+This does not close the broader real-data approval, final-validation, deployment
+or financial-benchmark requirements below. Historical checkpoints remain as an
+audit trail, not a description of the latest implementation.
+
 All unchecked items remain required, even if a smaller component passes its tests.
 
 - [ ] Point-in-time ingestion: raw snapshots, licenses, vintages, dated universe and

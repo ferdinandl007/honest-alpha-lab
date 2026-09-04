@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import os
 import sys
@@ -132,14 +131,12 @@ def _supervisor(args: argparse.Namespace) -> int:
 
 def _evaluate_formula(args: argparse.Namespace) -> int:
     """Numerical development run; never a registry promotion or sealed test."""
-    import numpy as np
-    import pandas as pd
-
     from .artifacts import LocalArtifactStore
     from .contracts import ContractError
     from .dsl import Formula
     from .numerical import WalkForwardConfig, WalkForwardEvaluator
     from .panel import estimate_incremental_beta, next_open_residual_labels
+    from .prediction_artifacts import store_predictions
     from .snapshots import ParquetSnapshot
 
     snapshot = ParquetSnapshot(args.snapshot)
@@ -160,22 +157,33 @@ def _evaluate_formula(args: argparse.Namespace) -> int:
     report, predictions = WalkForwardEvaluator(config).evaluate(
         formula, panel, labels, snapshot_hash=snapshot.snapshot_hash, baseline=baseline)
     store = LocalArtifactStore(args.output_directory)
-    frame = pd.DataFrame({"session": np.repeat(panel.dates, len(panel.assets)),
-                          "asset": np.tile(panel.assets, len(panel.dates)),
-                          "score": predictions.ravel()})
-    buffer = io.BytesIO()
-    frame.to_parquet(buffer, index=False)
-    predictions_hash = store.put(buffer.getvalue())
-    record = {"report": asdict(report), "predictions_artifact_hash": predictions_hash,
+    handoff = store_predictions(snapshot, panel, predictions, formula.formula_hash, store)
+    record = {"report": asdict(report), **handoff,
               "snapshot_purpose": purpose, "formula": args.formula, "baseline": args.baseline,
               "provenance_status": "declared_not_independently_approved",
               "registry_status": "not_promoted", "financial_alpha_verified": False}
     report_hash = store.put((json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode())
     print(json.dumps({"report_artifact": str(store.root / report_hash),
-                      "predictions_artifact": str(store.root / predictions_hash),
+                      "predictions_artifact": str(store.root / handoff["predictions_artifact_hash"]),
+                      "signals_artifact": str(store.root / handoff["signals_artifact_hash"]),
+                      "strategy_id": handoff["strategy_id"],
                       "scope": report.scope, "snapshot_purpose": purpose,
                       "rank_ic": report.rank_ic, "incremental_rank_ic": report.incremental_rank_ic,
                       "financial_alpha_verified": False}, indent=2))
+    return 0
+
+
+def _backtest_portfolio(args: argparse.Namespace) -> int:
+    from .artifacts import LocalArtifactStore
+    from .portfolio_workflow import run_portfolio_workflow
+
+    request = json.loads(Path(args.request).read_text(encoding="utf-8"))
+    store = LocalArtifactStore(args.output_directory)
+    report = run_portfolio_workflow(request, artifact_store=store)
+    digest = store.put((json.dumps(report, sort_keys=True, indent=2,
+                                  allow_nan=False, default=str) + "\n").encode())
+    print(json.dumps({"report_artifact": str(store.root / digest),
+                      "scope": "development", "financial_alpha_verified": False}, indent=2))
     return 0
 
 
@@ -331,6 +339,10 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--output-directory", default="var/numerical-artifacts")
     evaluate.add_argument("--allow-correctness-fixture", action="store_true")
     evaluate.set_defaults(handler=_evaluate_formula)
+    portfolio = subcommands.add_parser("backtest-portfolio", help="compare conventional allocation on dated development inputs")
+    portfolio.add_argument("--request", required=True)
+    portfolio.add_argument("--output-directory", default="var/portfolio-artifacts")
+    portfolio.set_defaults(handler=_backtest_portfolio)
     freeze = subcommands.add_parser("freeze-run", help="validator service: lock a persistent numerical run")
     freeze.add_argument("--run-id", required=True)
     freeze.add_argument("--plan", required=True)

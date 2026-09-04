@@ -8,7 +8,7 @@ An always-on research lab for discovering, testing and remembering equity signal
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![Stage: Research Preview](https://img.shields.io/badge/stage-research_preview-F59E0B?style=flat-square)](docs/implementation-status.md)
-[![496 tests locally verified](https://img.shields.io/badge/tests-496_locally_verified-16A34A?style=flat-square)](research/supervisor-live-smoke-2026-09-05.md)
+[![536 tests locally verified](https://img.shields.io/badge/tests-536_locally_verified-16A34A?style=flat-square)](research/state-portfolio-integration-2026-09-05.md)
 [![No live trading](https://img.shields.io/badge/live_trading-none-64748B?style=flat-square)](#the-honest-part)
 
 [Get started](#get-started) · [How it works](#how-it-works) · [Onboarding](docs/onboarding.md) · [Research library](research-vault/literature/index.md) · [Contribute](CONTRIBUTING.md)
@@ -131,13 +131,18 @@ Our design keeps these distinctions explicit:
 | Content-verified Parquet snapshots and a bounded formula DSL | Implemented |
 | Purged comparisons with ridge, elastic net and LightGBM | Implemented |
 | PostgreSQL numerical queue and measured development feedback | Implemented |
-| Gaussian HMM / non-Markov state analysis | Component implemented; not in every report |
-| Conventional allocation and daily research backtesting | Component implemented; integration incomplete |
+| Gaussian HMM / non-Markov state analysis | Integrated into numerical reports and research feedback; fold-local diagnostics |
+| Conventional allocation and daily research backtesting | Integrated signal handoff, three allocation comparisons, audited artifacts and recurring jobs |
 | Provider-based hard model-spend enforcement | **Not complete** |
 | End-to-end real-data search benchmarks and full admission | **Not complete** |
 | Deployed, multi-day-certified 24/7 operation | **Not complete** |
 
 See the [implementation audit](docs/implementation-status.md) for the longer version.
+
+[State analysis → portfolio workflow](docs/state-and-portfolio-workflow.md) connects
+numerical predictions to dated execution inputs, explicit costs and reproducible
+portfolio reports. Missing state data are reported explicitly. These integrations
+do not certify a profitable strategy or replace independent data validation.
 
 ### A real run, not a mock dashboard
 
@@ -154,7 +159,7 @@ hidden behind an “autonomous” badge.
 
 [Read the smoke-test report →](research/supervisor-live-smoke-2026-09-05.md)
 
-The **496-test local checkpoint** covers software behavior, including real
+The **536-test local checkpoint** covers software behavior, including real
 PostgreSQL and subprocess tests. It is not a financial-performance benchmark.
 
 ## Get started

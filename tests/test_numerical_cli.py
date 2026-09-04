@@ -65,3 +65,32 @@ def test_parquet_to_cli_to_content_verified_artifacts(tmp_path):
     assert report["registry_status"] == "not_promoted"
     assert report["provenance_status"] == "declared_not_independently_approved"
     assert len(report["report"]["folds"]) >= 2
+    signals = pd.read_csv(output["signals_artifact"])
+    assert set(signals.strategy_id) == {output["strategy_id"]}
+    assert set(signals.snapshot_hash) == {snapshot.snapshot_hash}
+    assert signals.available_at.str.endswith("T21:00:00+00:00").all()
+    assert signals.session.max() == str(dates[-1])  # Unlabeled tail still receives predictions.
+    # Exercise the numerical CSV directly through the portfolio handoff. The bars
+    # and training returns below are accounting fixtures, never financial evidence.
+    from honest_alpha_lab.portfolio_workflow import run_portfolio_workflow
+    strategy_id = output["strategy_id"]
+    pd.DataFrame([{"day": str(day), "asset": asset, "open": 100,
+                   "high": 102, "low": 98, "close": 101,
+                   "dollar_volume": 1e7, "borrow_available": True}
+                  for day in dates[-20:] for asset in signals.asset.unique()]).to_csv(tmp_path / "bars.csv", index=False)
+    pd.DataFrame([{"day": str(dates[i]), "strategy_id": strategy_id, "return": value,
+                   "available_at": f"{dates[i]}T21:00:00Z"}
+                  for i, value in ((10, -.01), (11, .02), (12, .01))]).to_csv(tmp_path / "training.csv", index=False)
+    portfolio = run_portfolio_workflow({
+        "scope": "development", "bars_csv": str(tmp_path / "bars.csv"),
+        "signals_csv": output["signals_artifact"], "training_returns_csv": str(tmp_path / "training.csv"),
+        "development_start": str(dates[0]), "development_end": str(dates[15]),
+        "test_start": str(dates[-20]), "test_end": str(dates[-1]),
+        "strategies": {strategy_id: {"name": "fixture numerical candidate", "family": "symbolic",
+            "signal_description": "fixture only", "required_inputs": ["x"], "horizon_days": [5],
+            "side": "long_only", "rebalance_days": 1}},
+        "execution_policy": {"commission_bps": 1, "slippage_bps": 2, "annual_borrow_rate": 0},
+    })
+    assert portfolio["source_snapshot_labels"] == [snapshot.snapshot_hash]
+    assert all(result["result"]["fills"] for result in portfolio["comparisons"].values())
+    assert portfolio["point_in_time_verified"] is False

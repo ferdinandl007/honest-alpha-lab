@@ -29,6 +29,30 @@ def execute(lease, work_root: Path):
     from .postgres_store import PostgresStore
 
     payload = lease.spec.payload
+    if lease.spec.kind == "portfolio":
+        from .portfolio_workflow import portfolio_engine_identity, run_portfolio_workflow
+
+        request = payload["request"]
+        if not isinstance(request.get("input_hashes"), dict) or not all(
+            request["input_hashes"].get(name) for name in ("bars", "signals", "training_returns")
+        ):
+            raise ContractError("recurring portfolio jobs require frozen input hashes")
+        directory = work_root / "jobs" / lease.job_id
+        directory.mkdir(parents=True, exist_ok=True)
+        _checkpoint(directory / "spec.json", {"campaign_id": lease.campaign_id, "spec": lease.spec,
+                                               "engine": portfolio_engine_identity()})
+        completed = directory / "result.json"
+        artifacts = LocalArtifactStore(payload["artifact_root"])
+        if completed.exists():
+            result = json.loads(completed.read_text())
+            artifacts.get(result["report_artifact_hash"])
+            return result
+        report = run_portfolio_workflow(request, artifact_store=artifacts)
+        digest = artifacts.put(json.dumps(report, sort_keys=True, allow_nan=False, default=str).encode())
+        result = {"scope": "development", "status": "backtested",
+                  "report_artifact_hash": digest, "financial_alpha_verified": False}
+        _checkpoint(completed, result)
+        return result
     if lease.spec.kind == "numerical":
         # Numerical handlers have no agent and use only trusted deployment paths.
         return NumericalJobService(PostgresStore(os.environ["HAL_WORKER_DSN"]),
