@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
+import argparse
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,10 @@ UTC = timezone.utc
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--allow-unmetered-provider", action="store_true",
+                        help="acknowledge provider billing without enforced token/dollar caps")
+    args = parser.parse_args()
     prompt = get_prompt("sec-edgar-event-mining")
     source_contract = {
         "source": "SEC EDGAR filings and XBRL",
@@ -76,7 +81,7 @@ def main() -> None:
     orchestrator.register_worker(
         CliSubagentWorker(
             AgentKind.TEXT_EVENT,
-            CliAgentSpec.codex(timeout_seconds=900),
+            CliAgentSpec.codex(timeout_seconds=900, allow_unmetered_provider=args.allow_unmetered_provider),
             FileTaskStore(ROOT / "var" / "agent-tasks"),
         )
     )

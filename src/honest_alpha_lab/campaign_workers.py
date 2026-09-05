@@ -113,7 +113,8 @@ def execute(lease, work_root: Path):
     task = AgentTask(lease.job_id, job, template.name, frozen["context"])
     task_store = FileTaskStore(work_root / "agent-tasks")
     worker = CliSubagentWorker(kind, CliAgentSpec.codex_research(
-        timeout_seconds=lease.spec.timeout_seconds, workspace_root=work_root / "research-scratch"), task_store)
+        timeout_seconds=lease.spec.timeout_seconds, workspace_root=work_root / "research-scratch",
+        allow_unmetered_provider=payload.get("allow_unmetered_provider", False)), task_store)
     proposal_path = directory / "proposal.json"
     if not proposal_path.exists():
         package_dir = task_store.root / task.task_id

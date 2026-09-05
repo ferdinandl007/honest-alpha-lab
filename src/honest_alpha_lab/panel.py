@@ -7,8 +7,8 @@ from __future__ import annotations
 import hashlib
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from types import MappingProxyType
 
 import numpy as np
@@ -23,6 +23,10 @@ class ResearchPanel:
     assets: tuple[str, ...]
     fields: Mapping[str, np.ndarray]
     eligible: np.ndarray
+    decision_at: tuple[datetime, ...] | None = field(default=None, kw_only=True)
+    open_at: tuple[datetime, ...] | None = field(default=None, kw_only=True)
+    snapshot_hash: str | None = field(default=None, kw_only=True)
+    provenance_json: str = field(default='{"status":"unknown"}', kw_only=True)
 
     def __post_init__(self):
         dates, assets = tuple(self.dates), tuple(self.assets)
@@ -54,6 +58,26 @@ class ResearchPanel:
         object.__setattr__(self, "fields", MappingProxyType(fields))
         object.__setattr__(self, "eligible",
                            np.frombuffer(eligibility.tobytes(), dtype=bool).reshape(shape))
+        if self.decision_at is not None or self.open_at is not None:
+            for name in ("decision_at", "open_at"):
+                clocks = getattr(self, name)
+                if clocks is None or len(clocks) != len(dates) or any(
+                    not isinstance(t, datetime) or t.utcoffset() is None for t in clocks
+                ):
+                    raise ContractError("panel requires aligned explicit timezone-aware clocks")
+                object.__setattr__(self, name, tuple(t.astimezone(UTC) for t in clocks))
+            self.require_execution_timing()
+
+    def require_execution_timing(self):
+        if self.open_at is None or self.decision_at is None:
+            raise ContractError("numerical execution requires explicit open and decision clocks; reimport legacy snapshots")
+        if any(o > d for o, d in zip(self.open_at, self.decision_at)) or any(
+            self.open_at[i] >= self.open_at[i + 1]
+            or self.decision_at[i] >= self.decision_at[i + 1]
+            or self.decision_at[i] >= self.open_at[i + 1]
+            for i in range(len(self.dates) - 1)
+        ):
+            raise ContractError("decision must follow its open and precede the next open")
 
     @property
     def shape(self):
@@ -63,6 +87,8 @@ class ResearchPanel:
     def content_hash(self):
         return canonical_hash({
             "dates": self.dates, "assets": self.assets,
+            "decision_at": self.decision_at, "open_at": self.open_at,
+            "snapshot_hash": self.snapshot_hash, "provenance_json": self.provenance_json,
             "eligible": hashlib.sha256(self.eligible.tobytes()).hexdigest(),
             "fields": {name: hashlib.sha256(values.tobytes()).hexdigest()
                        for name, values in self.fields.items()},
@@ -152,14 +178,20 @@ class ForwardLabels:
     values: np.ndarray
     end_indices: tuple[int | None, ...]
     convention: str = "next_open_to_open_residual"
+    source_panel_hash: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self):
         array = np.array(self.values, dtype=float, copy=True)
-        if not isinstance(self.horizon, int) or self.horizon <= 0:
+        if type(self.horizon) is not int or self.horizon <= 0:
             raise ContractError("label horizon must be a positive integer")
         if array.ndim != 2 or len(self.end_indices) != len(array) or np.isinf(array).any():
             raise ContractError("invalid label alignment or values")
         for index, end in enumerate(self.end_indices):
+            if self.convention == "next_open_to_open_residual":
+                expected = index + self.horizon + 1
+                expected = expected if expected < len(array) else None
+                if end != expected or (end is not None and type(end) is not int):
+                    raise ContractError("label endpoint must match the declared next-open horizon")
             if end is None:
                 if np.isfinite(array[index]).any():
                     raise ContractError("unknown label end cannot have observed outcomes")
@@ -169,11 +201,23 @@ class ForwardLabels:
                            np.frombuffer(array.tobytes(), dtype=float).reshape(array.shape))
         object.__setattr__(self, "end_indices", tuple(self.end_indices))
 
+    @classmethod
+    def for_panel(cls, panel, *, horizon, values, end_indices,
+                  convention="next_open_to_open_residual"):
+        panel.require_execution_timing()
+        if np.shape(values) != panel.shape:
+            raise ContractError("label shape differs from its source panel")
+        if convention != "next_open_to_open_residual":
+            raise ContractError("unsupported label convention")
+        return cls(horizon, values, end_indices, convention,
+                   source_panel_hash=panel.content_hash)
+
     @property
     def content_hash(self):
         return canonical_hash({"horizon": self.horizon, "shape": self.values.shape,
                                "values": hashlib.sha256(self.values.tobytes()).hexdigest(),
-                               "ends": self.end_indices, "convention": self.convention})
+                               "ends": self.end_indices, "convention": self.convention,
+                               "source_panel_hash": self.source_panel_hash})
 
 
 def next_open_residual_labels(
@@ -214,7 +258,7 @@ def next_open_residual_labels(
                       - beta[t] * (market[end] / market[start] - 1))
         result[t, valid] = values[valid]
         ends[t] = end
-    return ForwardLabels(horizon, result, tuple(ends))
+    return ForwardLabels.for_panel(panel, horizon=horizon, values=result, end_indices=tuple(ends))
 
 
 def estimate_incremental_beta(panel: ResearchPanel, window: int = 252,

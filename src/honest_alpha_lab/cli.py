@@ -65,12 +65,23 @@ def _persistent_numerical(args: argparse.Namespace) -> int:
 
 
 def _import_snapshot(args: argparse.Namespace) -> int:
+    from .artifacts import LocalArtifactStore
+    from .contracts import ContractError
     from .snapshots import ParquetSnapshot, SnapshotDeclaration
 
     declaration = SnapshotDeclaration(**json.loads(Path(args.declaration).read_text()))
+    bindings = json.loads(Path(args.feature_manifests).read_text()) if args.feature_manifests else {}
+    if not isinstance(bindings, dict) or any(
+        not isinstance(field, str) or not isinstance(digest, str) for field, digest in bindings.items()
+    ):
+        raise ContractError("feature manifests must map field names to manifest hashes")
+    if bindings and not args.feature_artifacts:
+        raise ContractError("bound feature manifests require --feature-artifacts")
     snapshot = ParquetSnapshot.create(args.output_root, observations=args.observations,
                                       universe=args.universe, sessions=args.sessions,
-                                      declaration=declaration)
+                                      declaration=declaration, feature_manifests=bindings,
+                                      feature_artifacts=LocalArtifactStore(args.feature_artifacts)
+                                      if args.feature_artifacts else None)
     print(json.dumps({"snapshot_directory": str(snapshot.directory),
                       "snapshot_hash": snapshot.snapshot_hash,
                       "content_verified": True, "independently_approved": False}, indent=2))
@@ -192,7 +203,8 @@ def _strategy_and_books(args: argparse.Namespace) -> int:
     request = json.loads(Path(args.request).read_text())
     if args.command == "build-strategies":
         from .strategy_builder import run_strategy_agent
-        result = run_strategy_agent(request, args.output_directory)
+        result = run_strategy_agent(request, args.output_directory,
+                                    allow_unmetered_provider=args.allow_unmetered_provider)
     elif args.command == "session-backtest":
         from .session_strategies import run_session_backtest
         result = run_session_backtest(request)
@@ -286,6 +298,7 @@ def _run_symbolic(args: argparse.Namespace) -> int:
             executable="codex",
             timeout_seconds=args.timeout_seconds,
             extra_args=extra_args,
+            allow_unmetered_provider=args.allow_unmetered_provider,
         ),
         FileTaskStore(args.task_store),
     )
@@ -331,12 +344,16 @@ def _parser() -> argparse.ArgumentParser:
     symbolic.add_argument("--timeout-seconds", type=int, default=900)
     symbolic.add_argument("--max-trials", type=int, default=5)
     symbolic.add_argument("--max-agent-tokens", type=int, default=100_000)
+    symbolic.add_argument("--allow-unmetered-provider", action="store_true",
+                          help="acknowledge provider billing risk: token/dollar caps are not enforced")
     symbolic.set_defaults(handler=_run_symbolic)
     ingest = subcommands.add_parser("import-snapshot", help="archive exact Parquet exports and provenance declarations")
     ingest.add_argument("--observations", required=True)
     ingest.add_argument("--universe", required=True)
     ingest.add_argument("--sessions", required=True)
     ingest.add_argument("--declaration", required=True)
+    ingest.add_argument("--feature-manifests", help="JSON mapping of materialized field names to feature manifest hashes")
+    ingest.add_argument("--feature-artifacts", help="artifact store containing bound feature manifests and their observations")
     ingest.add_argument("--output-root", default="var/snapshots")
     ingest.set_defaults(handler=_import_snapshot)
     features = subcommands.add_parser("build-features", help="materialize evidenced events/proxies; no automatic approval")
@@ -387,6 +404,9 @@ def _parser() -> argparse.ArgumentParser:
         operation = subcommands.add_parser(command)
         operation.add_argument("--request", required=True)
         operation.add_argument("--output-directory", default="var/book-artifacts")
+        if command == "build-strategies":
+            operation.add_argument("--allow-unmetered-provider", action="store_true",
+                                  help="acknowledge provider billing risk: token/dollar caps are not enforced")
         operation.set_defaults(handler=_strategy_and_books)
     console = subcommands.add_parser("serve-console", help="private operator approval console; live disabled by default")
     console.add_argument("--state", default="var/control/control.sqlite")

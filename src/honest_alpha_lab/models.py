@@ -174,7 +174,8 @@ class MultivariateGaussianHMMBaseline:
             log_likelihood = tuple(
                 -0.5
                 * sum(
-                    (value - state_mean[column]) ** 2 / state_variance[column]
+                    log(state_variance[column])
+                    + (value - state_mean[column]) ** 2 / state_variance[column]
                     for column, value in enumerate(vector)
                 )
                 for state_mean, state_variance in zip(self._means, self._variances)

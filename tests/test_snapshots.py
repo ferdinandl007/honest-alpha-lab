@@ -11,6 +11,7 @@ from honest_alpha_lab.snapshots import ParquetSnapshot, SnapshotDeclaration
 
 def exports(tmp_path, *, naive=False, duplicate=False):
     sessions = pd.DataFrame({"session": ["2020-01-02", "2020-01-03", "2020-01-06"],
+                             "open_at": ["2020-01-02T14:00:00Z", "2020-01-03T14:00:00Z", "2020-01-06T14:00:00Z"],
                              "decision_at": ["2020-01-02T21:00:00Z", "2020-01-03T21:00:00Z", "2020-01-06T21:00:00Z"]})
     observations = pd.DataFrame([
         ["2020-01-02", "A", "x", 1., "2020-01-02T20:00:00Z", "old"],

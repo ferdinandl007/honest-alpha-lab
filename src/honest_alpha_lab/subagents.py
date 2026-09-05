@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
 from uuid import uuid4
+from time import perf_counter
 
 from .agents import ProposalAgent
 from .contracts import (
@@ -12,6 +13,7 @@ from .contracts import (
     AgentRunStatus,
     AgentTrace,
     AlphaCandidate,
+    AlphaStatus,
     ContractError,
     ResearchJob,
     canonical_hash,
@@ -179,16 +181,21 @@ class SubagentOrchestrator:
         )
         try:
             worker = self._workers[job.agent_kind]
+            started = perf_counter()
             result = worker.run(task, get_prompt(task.prompt_name), self._tools)
+            elapsed = perf_counter() - started
+            result.usage.__post_init__()
             total_usage = JobUsage(
-                trials=result.usage.trials,
-                runtime_seconds=result.usage.runtime_seconds,
+                trials=max(len(result.alpha_candidates), result.usage.trials),
+                runtime_seconds=max(elapsed, result.usage.runtime_seconds),
                 data_cost_usd=result.usage.data_cost_usd
                 + self._tools.data_cost(job.job_id),
                 agent_tokens=result.usage.agent_tokens,
             )
             self._queue.record_usage(job, total_usage)
             for candidate in result.alpha_candidates:
+                if candidate.status != AlphaStatus.PROPOSED:
+                    raise ContractError("worker candidates must have proposed status")
                 if candidate.agent_kind != job.agent_kind:
                     raise ContractError(
                         "worker returned a candidate from another agent kind"
@@ -197,7 +204,9 @@ class SubagentOrchestrator:
                     raise ContractError(
                         "worker candidate does not match the job input snapshot"
                     )
-                self._registry.register(candidate)
+            # Validate the whole batch before any publication.
+            result.output_hash
+            self._registry.register_batch(result.alpha_candidates)
             run = AgentRun(
                 run_id, task.task_id, AgentRunStatus.COMPLETED, result.output_hash
             )

@@ -3,6 +3,7 @@
     "kind": "proposal",
     "payload": {
       "agent_kind": "symbolic_factor",
+      "allow_unmetered_provider": false,
       "prompt_name": "symbolic-factor-research",
       "brief": "Explore distinct economic mechanisms for liquid US-equity signals. Consult prior research. Collect useful public evidence and prototype calculations. Report source leads and experiments in output; do not emit alpha_candidates until admitted numerical lineage is supplied. Do not buy data or trade."
     },
@@ -16,6 +17,7 @@
     "kind": "proposal",
     "payload": {
       "agent_kind": "text_event",
+      "allow_unmetered_provider": false,
       "prompt_name": "text-event-research",
       "brief": "Investigate distinct events and disclosure changes in public issuer material. Collect sources, prototype extractors, and record evidence and limitations. Use prior campaign memory. Report in output with no alpha_candidates until admitted lineage is supplied. Do not buy data or trade."
     },
@@ -29,6 +31,7 @@
     "kind": "proposal",
     "payload": {
       "agent_kind": "alternative_dataset_creator",
+      "allow_unmetered_provider": false,
       "prompt_name": "semantic-dataset-discovery",
       "brief": "Discover and collect useful economic proxy datasets, beyond the existing catalog. Prototype features and company exposure mappings. Follow novel leads; preserve sources, timestamps, code and failed attempts. Report in output with no alpha_candidates until admitted lineage is supplied. Do not buy data or trade."
     },

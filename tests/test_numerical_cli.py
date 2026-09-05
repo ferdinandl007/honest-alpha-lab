@@ -31,6 +31,7 @@ def make_numerical_snapshot(tmp_path):
     pd.DataFrame({"asset": assets, "valid_from": str(dates[0]), "valid_to": None,
                   "known_at": "2019-01-01T00:00:00Z"}).to_parquet(tmp_path / "universe.parquet")
     pd.DataFrame({"session": [str(d) for d in dates],
+                  "open_at": [f"{d}T14:00:00Z" for d in dates],
                   "decision_at": [f"{d}T21:00:00Z" for d in dates]}).to_parquet(tmp_path / "sessions.parquet")
     declaration = SnapshotDeclaration("test", "fixture://input", "test-only", "fixture://rights",
         "fixture://availability", "fixture://universe", "test-total-return", "test-only",

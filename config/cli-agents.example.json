@@ -5,7 +5,8 @@
       "executable": "codex",
       "command_prefix": ["exec"],
       "sandbox": "read-only",
-      "timeout_seconds": 900
+      "timeout_seconds": 900,
+      "allow_unmetered_provider": false
     }
   ],
   "task_store": "var/agent-tasks"

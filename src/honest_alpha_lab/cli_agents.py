@@ -20,8 +20,15 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from .contracts import AgentKind, AlphaCandidate, ContractError, canonical_hash
-from .orchestration import JobUsage
+from .contracts import (
+    AgentKind,
+    AlphaCandidate,
+    ContractError,
+    canonical_hash,
+    require_count,
+    require_number,
+)
+from .orchestration import JobUsage, validate_usage
 from .prompts import PromptTemplate
 from .subagents import AgentTask, SubagentResult
 from .tools import ToolRouter
@@ -67,12 +74,14 @@ class CliAgentSpec:
     working_directory: str | None = None
     research_mode: bool = False
     research_workspace_root: str | None = None
+    allow_unmetered_provider: bool = False
 
     def __post_init__(self) -> None:
         if not self.name or not self.executable or not self.command_prefix:
             raise ContractError("CLI agent needs a name, executable, and command prefix")
-        if self.timeout_seconds <= 0:
-            raise ContractError("CLI agent timeout must be positive")
+        require_number(self.timeout_seconds, "CLI agent timeout", positive=True)
+        if type(self.allow_unmetered_provider) is not bool:
+            raise ContractError("allow_unmetered_provider must be a boolean")
         if self.sandbox not in {"read-only", "workspace-write"}:
             raise ContractError("CLI agent sandbox must be read-only or workspace-write")
         if self.research_mode and (self.sandbox != "workspace-write" or self.working_directory):
@@ -84,19 +93,22 @@ class CliAgentSpec:
             raise ContractError("unsafe Codex bypass flags are forbidden in agent specs")
 
     @classmethod
-    def codex(cls, *, timeout_seconds: int = 900) -> CliAgentSpec:
+    def codex(cls, *, timeout_seconds: int = 900, allow_unmetered_provider: bool = False) -> CliAgentSpec:
         """Safe default for Codex CLI's non-interactive `exec` command."""
-        return cls(name="codex", executable="codex", timeout_seconds=timeout_seconds)
+        return cls(name="codex", executable="codex", timeout_seconds=timeout_seconds,
+                   allow_unmetered_provider=allow_unmetered_provider)
 
     @classmethod
     def codex_research(
-        cls, *, timeout_seconds: int = 900, workspace_root: str | Path | None = None
+        cls, *, timeout_seconds: int = 900, workspace_root: str | Path | None = None,
+        allow_unmetered_provider: bool = False
     ) -> CliAgentSpec:
         """Opt in to network-enabled research in a fresh, retained scratch directory."""
         return cls(
             name="codex", executable="codex", timeout_seconds=timeout_seconds,
             sandbox="workspace-write", research_mode=True,
             research_workspace_root=str(workspace_root) if workspace_root is not None else None,
+            allow_unmetered_provider=allow_unmetered_provider,
         )
 
 
@@ -233,6 +245,13 @@ class CliSubagentWorker:
         self._task_store = task_store
 
     def run(self, task: AgentTask, prompt: PromptTemplate, tools: ToolRouter) -> SubagentResult:
+        if not self._spec.allow_unmetered_provider:
+            raise ContractError(
+                "CLI provider token and dollar spending cannot be enforced by this runner. "
+                "Trusted configuration must explicitly set allow_unmetered_provider=True "
+                "to acknowledge this billing risk; the runtime limit is not a spending cap.")
+        task.job.budget.__post_init__()
+        timeout = min(self._spec.timeout_seconds, task.job.budget.max_runtime_seconds)
         allowed_tools = tuple(name.value for name in tools.allowed_for(self.kind))
         workspace = self._create_research_workspace() if self._spec.research_mode else None
         rendered = _render_cli_prompt(task, prompt.render(task.context), allowed_tools, workspace)
@@ -242,6 +261,8 @@ class CliSubagentWorker:
         self._task_store.set_state(package, "running", {
             "command_hash": canonical_hash(command),
             "research_workspace": str(workspace) if workspace else None,
+            "allow_unmetered_provider": True,
+            "usage_independently_verified": False,
         })
         protected = {path: path.read_bytes() for path in package.directory.iterdir() if path.is_file()}
         started = perf_counter()
@@ -254,11 +275,11 @@ class CliSubagentWorker:
                 capture_output=True,
                 check=False,
                 text=True,
-                timeout=self._spec.timeout_seconds,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired as error:
             failure_reason = "timeout"
-            raise ContractError(f"CLI agent timed out after {self._spec.timeout_seconds}s") from error
+            raise ContractError(f"CLI agent timed out after {timeout}s") from error
         except OSError as error:
             failure_reason = "launch_error"
             raise ContractError(f"CLI agent could not launch: {error}") from error
@@ -275,26 +296,33 @@ class CliSubagentWorker:
             if workspace:
                 changed.extend(path.name for path in package.directory.iterdir() if path not in protected)
             if changed:
-                self._task_store.set_state(package, "failed", {"reason": "task_package_modified", "files": changed})
+                self._task_store.set_state(package, "failed", {
+                    "reason": "task_package_modified", "files": changed,
+                    "runtime_seconds": perf_counter() - started, "provider_usage_unknown": True})
                 raise ContractError("CLI agent modified immutable task-package files")
             if failure_reason:
-                self._task_store.set_state(package, "failed", {"reason": failure_reason})
+                self._task_store.set_state(package, "failed", {
+                    "reason": failure_reason, "runtime_seconds": perf_counter() - started,
+                    "provider_usage_unknown": True})
         runtime = perf_counter() - started
         package.events_path.write_text(completed.stdout, encoding="utf-8")
         (package.directory / "stderr.log").write_text(completed.stderr, encoding="utf-8")
         if completed.returncode != 0:
             self._task_store.set_state(
-                package, "failed", {"exit_code": completed.returncode, "runtime_seconds": runtime}
+                package, "failed", {"exit_code": completed.returncode, "runtime_seconds": runtime,
+                                    "provider_usage_unknown": True}
             )
             raise ContractError(f"CLI agent exited with status {completed.returncode}")
         if not result_path.is_file() or result_path.is_symlink():
-            self._task_store.set_state(package, "failed", {"reason": "missing_result"})
+            self._task_store.set_state(package, "failed", {"reason": "missing_result",
+                "runtime_seconds": runtime, "provider_usage_unknown": True})
             raise ContractError("CLI agent did not produce its required result.json")
         try:
             response = json.loads(result_path.read_text(encoding="utf-8"))
             result = self._parse_result(task, response, runtime)
         except (json.JSONDecodeError, TypeError, ValueError, ContractError) as error:
-            self._task_store.set_state(package, "failed", {"reason": "invalid_result"})
+            self._task_store.set_state(package, "failed", {"reason": "invalid_result",
+                "runtime_seconds": runtime, "provider_usage_unknown": True})
             raise ContractError(f"CLI agent returned an invalid proposal document: {error}") from error
         if workspace:
             _write_json(package.result_path, response)
@@ -302,6 +330,8 @@ class CliSubagentWorker:
             package,
             "completed",
             {"result_hash": result.output_hash, "candidate_count": len(result.alpha_candidates),
+             "runtime_seconds": runtime, "usage_independently_verified": False,
+             "allow_unmetered_provider": True,
              "research_workspace": str(workspace) if workspace else None},
         )
         return result
@@ -348,6 +378,7 @@ class CliSubagentWorker:
 
     def _parse_result(self, task: AgentTask, response: object, runtime: float) -> SubagentResult:
         job = task.job
+        require_number(runtime, "measured runtime")
         if not isinstance(response, Mapping):
             raise ContractError("CLI result must be a JSON object")
         raw_candidates = response.get("alpha_candidates", ())
@@ -355,6 +386,8 @@ class CliSubagentWorker:
         raw_usage = response.get("usage", {})
         if not isinstance(raw_candidates, list) or not isinstance(raw_output, Mapping) or not isinstance(raw_usage, Mapping):
             raise ContractError("CLI result has invalid top-level fields")
+        if len(raw_candidates) > job.budget.max_trials:
+            raise ContractError("candidate count exceeds immutable trial budget")
         lineage_ids = _approved_lineage_ids(task.context) if raw_candidates else set()
         candidates = tuple(
             AlphaCandidate.new(
@@ -367,11 +400,12 @@ class CliSubagentWorker:
             for item in raw_candidates
         )
         usage = JobUsage(
-            trials=_nonnegative_int(raw_usage.get("trials", len(candidates)), "trials"),
+            trials=max(len(candidates), _nonnegative_int(raw_usage.get("trials", len(candidates)), "trials")),
             runtime_seconds=max(runtime, _nonnegative_number(raw_usage.get("runtime_seconds", 0.0), "runtime_seconds")),
             data_cost_usd=_nonnegative_number(raw_usage.get("data_cost_usd", 0.0), "data_cost_usd"),
             agent_tokens=_nonnegative_int(raw_usage.get("agent_tokens", 0), "agent_tokens"),
         )
+        validate_usage(job, usage)
         return SubagentResult(candidates, dict(raw_output), usage)
 
 
@@ -478,12 +512,10 @@ def _required_mapping(item: object, name: str) -> Mapping[str, object]:
 
 
 def _nonnegative_int(value: object, name: str) -> int:
-    if not isinstance(value, int) or value < 0:
-        raise ContractError(f"usage {name} must be a non-negative integer")
+    require_count(value, f"usage {name}")
     return value
 
 
 def _nonnegative_number(value: object, name: str) -> float:
-    if not isinstance(value, (int, float)) or value < 0:
-        raise ContractError(f"usage {name} must be a non-negative number")
+    require_number(value, f"usage {name}")
     return float(value)

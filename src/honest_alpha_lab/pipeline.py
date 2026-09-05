@@ -24,7 +24,7 @@ from .dsl import Formula
 from .numerical import WalkForwardConfig
 from .postgres_store import PostgresStore
 
-FORMAT = "numerical-job-v1"
+FORMAT = "numerical-job-v2"
 PRICE_FIELDS = tuple(f"{prefix}total_return_{point}"
                      for prefix in ("", "sector_", "market_") for point in ("open", "close"))
 
@@ -118,7 +118,8 @@ def freeze_numerical_run(validator: PostgresStore, run_id: str, plan: NumericalP
 
 
 def _plan_from_run(run, *, require_active: bool = True, require_current_engine: bool = True):
-    if (not run or run["policy"].get("format") != FORMAT
+    allowed_formats = {FORMAT} if require_current_engine else {FORMAT, "numerical-job-v1"}
+    if (not run or run["policy"].get("format") not in allowed_formats
             or run["snapshot"].get("scope") != "development"):
         raise ContractError("not a declared numerical development run")
     plan = NumericalPlan.from_payload(run["policy"]["plan"])
@@ -360,6 +361,9 @@ def development_feedback(reader: PostgresStore, artifacts: LocalArtifactStore,
                         raise ContractError("feedback contains invalid numerical evidence")
                     summary[key] = value
                 summary["snapshot_purpose"] = result["snapshot_purpose"]
+                summary["timing_contract"] = report.get("timing_contract", "legacy_unknown")
+                summary["label_source_panel_hash"] = report.get("label_source_panel_hash")
+                summary["input_provenance"] = report.get("input_provenance", {"status": "legacy_unknown"})
                 summary["regime_diagnostics"] = [
                     {key: state.get(key) for key in (
                         "method", "fold_index", "status", "diagnostic", "converged",

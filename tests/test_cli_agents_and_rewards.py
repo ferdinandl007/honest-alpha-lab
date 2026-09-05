@@ -67,7 +67,7 @@ class CliAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             spec = CliAgentSpec(
                 name="fake", executable=sys.executable,
-                command_prefix=(str(fixture),), sandbox="read-only"
+                command_prefix=(str(fixture),), sandbox="read-only", allow_unmetered_provider=True
             )
             worker = CliSubagentWorker(AgentKind.SYMBOLIC_FACTOR, spec, FileTaskStore(directory))
             result = worker.run(task, get_prompt("symbolic-factor-research"), ToolRouter())

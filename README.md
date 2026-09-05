@@ -8,7 +8,7 @@ An always-on research lab for discovering, testing and remembering equity signal
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![Stage: Research Preview](https://img.shields.io/badge/stage-research_preview-F59E0B?style=flat-square)](docs/implementation-status.md)
-[![658 tests locally verified](https://img.shields.io/badge/tests-658_locally_verified-16A34A?style=flat-square)](research/books-console-verification-2026-09-05.md)
+[![761 tests locally verified](https://img.shields.io/badge/tests-761_locally_verified-16A34A?style=flat-square)](docs/money-safety-review.md)
 [![Live disabled by default](https://img.shields.io/badge/live-disabled_by_default-64748B?style=flat-square)](docs/books-and-control-room.md)
 
 [Get started](#get-started) · [How it works](#how-it-works) · [Onboarding](docs/onboarding.md) · [Research library](research-vault/literature/index.md) · [Contribute](CONTRIBUTING.md)
@@ -33,6 +33,11 @@ objective is **incremental, persistent information**, not a beautiful backtest.
 > implemented. Production deployment, hard model-spend controls, complete validation
 > integration and multi-day reliability testing remain unfinished. No profitable
 > alpha or investment performance is claimed.
+
+**Upgrading an existing lab?** Read the [money-safety fixes and migration guide](docs/money-safety-review.md)
+before resuming. Numerical snapshots now require explicit execution clocks;
+CLI-agent launches require an explicit acknowledgement of unmetered provider
+billing risk. Preserve old artifacts and rerun affected research.
 
 ## Three ways to discover something useful
 

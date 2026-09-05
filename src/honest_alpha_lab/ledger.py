@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
@@ -42,6 +43,7 @@ class ImmutableLedger(Generic[T]):
 
     def append(self, payload: T) -> LedgerEntry[T]:
         with self._lock:
+            payload = deepcopy(payload)
             previous_hash = self._entries[-1].entry_hash if self._entries else "GENESIS"
             sequence = len(self._entries)
             entry_id = str(uuid4())
@@ -57,11 +59,11 @@ class ImmutableLedger(Generic[T]):
                 sequence, entry_id, payload, previous_hash, entry_hash, utc_now()
             )
             self._entries.append(entry)
-            return entry
+            return deepcopy(entry)
 
     def entries(self) -> tuple[LedgerEntry[T], ...]:
         with self._lock:
-            return tuple(self._entries)
+            return deepcopy(tuple(self._entries))
 
     def verify(self) -> bool:
         with self._lock:
@@ -105,6 +107,9 @@ class AlphaRegistry:
 
     def register(self, candidate: AlphaCandidate) -> AlphaCandidate:
         with self._lock:
+            candidate = deepcopy(candidate)
+            if candidate.status != AlphaStatus.PROPOSED:
+                raise ContractError("new candidates must enter the registry as proposed")
             if candidate.candidate_id in self._candidates:
                 raise ContractError("candidate ids are immutable and cannot be reused")
             self._candidates[candidate.candidate_id] = candidate
@@ -115,7 +120,18 @@ class AlphaRegistry:
                 "research-agent",
                 "candidate registered",
             )
-            return candidate
+            return deepcopy(candidate)
+
+    def register_batch(self, candidates: tuple[AlphaCandidate, ...]) -> tuple[AlphaCandidate, ...]:
+        """Validate the entire batch under the registry lock before publication."""
+        with self._lock:
+            candidates = deepcopy(tuple(candidates))
+            ids = [candidate.candidate_id for candidate in candidates]
+            if len(set(ids)) != len(ids) or any(key in self._candidates for key in ids):
+                raise ContractError("candidate ids are immutable and cannot be reused")
+            if any(candidate.status != AlphaStatus.PROPOSED for candidate in candidates):
+                raise ContractError("new candidates must enter the registry as proposed")
+            return tuple(self.register(candidate) for candidate in candidates)
 
     def transition(
         self, candidate_id: str, to_status: AlphaStatus, actor: str, reason: str
@@ -147,13 +163,15 @@ class AlphaRegistry:
             )
             self._candidates[candidate_id] = updated
             self._record_event(candidate_id, candidate.status, to_status, actor, reason)
-            return updated
+            return deepcopy(updated)
 
     def get(self, candidate_id: str) -> AlphaCandidate:
-        return self._candidates[candidate_id]
+        with self._lock:
+            return deepcopy(self._candidates[candidate_id])
 
     def all(self) -> tuple[AlphaCandidate, ...]:
-        return tuple(self._candidates.values())
+        with self._lock:
+            return deepcopy(tuple(self._candidates.values()))
 
     def events(self) -> tuple[LedgerEntry[RegistryEvent], ...]:
         return self._events.entries()
@@ -192,6 +210,8 @@ class TrialLedger:
 
     def __init__(self) -> None:
         self._ledger: ImmutableLedger[TrialRecord] = ImmutableLedger()
+        self._active: dict[str, TrialRecord] = {}
+        self._lock = RLock()
 
     def start(
         self,
@@ -208,7 +228,9 @@ class TrialLedger:
             policy_hash,
             TrialStatus.STARTED,
         )
-        self._ledger.append(trial)
+        with self._lock:
+            self._ledger.append(trial)
+            self._active[trial.trial_id] = deepcopy(trial)
         return trial
 
     def complete(self, trial: TrialRecord, metrics: dict[str, float]) -> TrialRecord:
@@ -225,8 +247,7 @@ class TrialLedger:
             trial.started_at,
             utc_now(),
         )
-        self._ledger.append(completed)
-        return completed
+        return self._finish(trial, completed)
 
     def fail(self, trial: TrialRecord, error: str) -> TrialRecord:
         if trial.status != TrialStatus.STARTED:
@@ -242,8 +263,15 @@ class TrialLedger:
             completed_at=utc_now(),
             error=error,
         )
-        self._ledger.append(failed)
-        return failed
+        return self._finish(trial, failed)
+
+    def _finish(self, started: TrialRecord, terminal: TrialRecord) -> TrialRecord:
+        with self._lock:
+            if self._active.get(started.trial_id) != started:
+                raise ContractError("trial is unknown, changed, or already finished")
+            self._ledger.append(terminal)
+            del self._active[started.trial_id]
+            return terminal
 
     def entries(self) -> tuple[LedgerEntry[TrialRecord], ...]:
         return self._ledger.entries()

@@ -116,6 +116,7 @@ class TradeControl:
         return proposal["id"]
 
     def review(self, proposal_id, *, approve):
+        """Approval authorizes automatic execution, including after halt is lifted."""
         if type(approve) is not bool:
             raise ContractError("approval must be explicit boolean")
         with self._db() as db:
@@ -179,17 +180,45 @@ class TradeControl:
 
     def dispatch_ready(self):
         """Trusted executor only; proposers cannot invoke this through their token."""
-        snapshot = self.status()
-        policies = {book["id"]: book for book in snapshot["books"]}
+        # Display pagination must never decide which approved orders can execute.
+        # Filter before limiting so expired/obsolete intents cannot starve a batch.
+        now = _now()
+        day = datetime.now(UTC).date().isoformat()
+        with self._db() as db:
+            rows = db.execute("""
+                SELECT p.id,p.intent,b.policy FROM trade_proposals p
+                JOIN control_books b ON b.id=p.book AND b.revision=p.revision
+                WHERE p.expires>? AND
+                  (p.state='approved' OR
+                   (p.state='pending' AND json_extract(b.policy,'$.approval_required')=0))
+                  AND p.notional + COALESCE((
+                    SELECT SUM(reserved.notional) FROM trade_proposals reserved
+                    WHERE reserved.book=p.book AND reserved.reserved_day=?
+                  ),0) <= json_extract(b.policy,'$.max_daily_notional')
+                ORDER BY p.created ASC, p.rowid ASC
+                """, (now, day))
+            ready = []
+            try:
+                for proposal_id, encoded, policy_json in rows:
+                    try:
+                        self._armed(json.loads(policy_json))
+                    except ContractError:
+                        continue
+                    # Use the same timestamp parser as proposal/dispatch validation.
+                    quote_at = datetime.fromisoformat(json.loads(encoded)["quote_at"])
+                    if quote_at.utcoffset() is not None and 0 <= now - quote_at.timestamp() <= 60:
+                        ready.append(proposal_id)
+                        if len(ready) == 200:
+                            break
+            finally:
+                rows.close()  # Release the read lock before dispatch writes/reserves.
         results = []
-        for proposal in reversed(snapshot["proposals"]):
-            policy = policies[proposal["book"]]
-            if proposal["state"] == "approved" or proposal["state"] == "pending" and not policy["approval_required"]:
-                try:
-                    result = self.dispatch(proposal["id"])
-                except ContractError as exc:
-                    result = {"error": str(exc)}
-                results.append({"id": proposal["id"], "result": result})
+        for proposal_id in ready:
+            try:
+                result = self.dispatch(proposal_id)
+            except ContractError as exc:
+                result = {"error": str(exc)}
+            results.append({"id": proposal_id, "result": result})
         return results
 
     def status(self):

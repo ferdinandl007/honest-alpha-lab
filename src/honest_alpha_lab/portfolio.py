@@ -198,7 +198,8 @@ class BacktestResult:
 class PortfolioBacktester:
     """Next-bar limits with conservative, explicitly ordered daily execution.
 
-    Carried protective exits take priority over (and cancel) that asset's limits.
+    Opening protective exits precede marketable opening limits. Remaining
+    intraday protective exits take priority over that asset's intraday limits.
     New or increased entries can stop out on their entry bar. An intraday entry takes profit
     that day only if the close proves a subsequent target crossing. Triggered
     exits remain active until liquidated, subject to the shared participation
@@ -250,11 +251,32 @@ class PortfolioBacktester:
             used_notional: dict[str, float] = {}
             # Same-bar sale proceeds cannot finance an earlier intraday purchase.
             buying_power = max(0.0, cash)
-            cash, stop_fills = self._apply_protective_exits(day, today, positions, cash, used_notional)
+            cash, stop_fills = self._apply_protective_exits(
+                day, today, positions, cash, used_notional, open_only=True,
+            )
             fills.extend(stop_fills)
             blocked = {fill.asset for fill in stop_fills} | {
                 asset for asset, position in positions.items() if position.exit_reason
             }
+            orders = [order for order in orders if order.asset not in blocked]
+            buying_power = min(buying_power, max(0.0, cash))
+            cash, opening_fills, orders = self._fill_orders(
+                day, index, today, orders, positions, cash, rejected, used_notional,
+                min(buying_power, max(0.0, cash)), open_only=True,
+            )
+            fills.extend(opening_fills)
+            buying_power = max(0.0, buying_power - sum(
+                max(fill.quantity * fill.price, 0.0) + fill.commission
+                for fill in opening_fills
+            ))
+            # Opening limits have already changed the holdings and their basis.
+            # Only the remaining holdings can encounter later intraday triggers.
+            cash, intraday_exits = self._apply_protective_exits(
+                day, today, positions, cash, used_notional,
+            )
+            fills.extend(intraday_exits)
+            blocked.update(fill.asset for fill in intraday_exits)
+            blocked.update(asset for asset, position in positions.items() if position.exit_reason)
             orders = [order for order in orders if order.asset not in blocked]
             before_entries = {asset: position.quantity for asset, position in positions.items()}
             cash, order_fills, orders = self._fill_orders(
@@ -276,6 +298,8 @@ class PortfolioBacktester:
             blocked.update(fill.asset for fill in entry_exits)
             blocked.update(asset for asset, position in positions.items() if position.exit_reason)
             orders = [order for order in orders if order.asset not in blocked]
+            if _nav(cash, positions, today, day) <= 0:
+                raise ContractError(f"{day}: portfolio NAV is nonpositive; financing/insolvency is not modeled")
             for strategy_id, quantities in tuple(sleeve_quantities.items()):
                 sleeve_quantities[strategy_id] = {asset: quantity for asset, quantity in quantities.items() if asset not in blocked}
             due = [name for name in sorted(sleeve_allocation) if index % self.strategies[name].rebalance_days == 0]
@@ -373,7 +397,7 @@ class PortfolioBacktester:
         return orders
 
     def _fill_orders(self, day, index, bars, orders, positions, cash, rejected,
-                     used_notional=None, buying_power=None):
+                     used_notional=None, buying_power=None, *, open_only=False):
         used_notional = {} if used_notional is None else used_notional
         buying_power = max(0.0, cash) if buying_power is None else buying_power
         retained, fills = [], []
@@ -385,7 +409,8 @@ class PortfolioBacktester:
             if bar is None:
                 retained.append(order)
                 continue
-            eligible = bar.low <= order.limit_price if order.quantity > 0 else bar.high >= order.limit_price
+            low, high = (bar.open, bar.open) if open_only else (bar.low, bar.high)
+            eligible = low <= order.limit_price if order.quantity > 0 else high >= order.limit_price
             if not eligible:
                 retained.append(order)
                 continue
@@ -431,13 +456,16 @@ class PortfolioBacktester:
                 retained.append(_LimitOrder(order.asset, remaining, order.limit_price, order.expires_on_index, order.source))
         # Validity includes this bar, but its residual is dead at today's close,
         # even if the dataset ends here or the asset had no bar today.
+        if open_only:
+            return cash, fills, retained
         for order in retained:
             if index >= order.expires_on_index:
                 rejected.append(f"{order.asset}: limit order expired")
         retained = [order for order in retained if index < order.expires_on_index]
         return cash, fills, retained
 
-    def _apply_protective_exits(self, day, bars, positions, cash, used_notional=None, entry_fills=None):
+    def _apply_protective_exits(self, day, bars, positions, cash, used_notional=None, entry_fills=None,
+                              *, open_only=False):
         used_notional = {} if used_notional is None else used_notional
         fills = []
         for asset, position in tuple(positions.items()):
@@ -454,15 +482,16 @@ class PortfolioBacktester:
                 or (position.quantity < 0 and entry_fill.price > bar.open)
             )
             reason, price = None, None
+            low, high = (bar.open, bar.open) if open_only else (bar.low, bar.high)
             if position.quantity > 0:
                 stop, target = position.entry_price * (1 - self.execution.stop_loss_fraction), position.entry_price * (1 + self.execution.take_profit_fraction)
                 if position.exit_reason:
                     reason, price = position.exit_reason, bar.open
                 elif entry_fill is None and bar.open >= target:
                     reason, price = "take_profit", bar.open
-                elif bar.low <= stop:
+                elif low <= stop:
                     reason, price = "stop_loss", stop if entry_fill else min(bar.open, stop)
-                elif (bar.close if intraday_entry else bar.high) >= target:
+                elif (bar.close if intraday_entry else high) >= target:
                     reason, price = "take_profit", target if entry_fill else max(bar.open, target)
             else:
                 stop, target = position.entry_price * (1 + self.execution.stop_loss_fraction), position.entry_price * (1 - self.execution.take_profit_fraction)
@@ -470,9 +499,9 @@ class PortfolioBacktester:
                     reason, price = position.exit_reason, bar.open
                 elif entry_fill is None and target > 0 and bar.open <= target:
                     reason, price = "take_profit", bar.open
-                elif bar.high >= stop:
+                elif high >= stop:
                     reason, price = "stop_loss", stop if entry_fill else max(bar.open, stop)
-                elif target > 0 and (bar.close if intraday_entry else bar.low) <= target:
+                elif target > 0 and (bar.close if intraday_entry else low) <= target:
                     reason, price = "take_profit", target if entry_fill else min(bar.open, target)
             if reason:
                 position.exit_reason = reason

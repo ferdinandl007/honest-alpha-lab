@@ -480,6 +480,7 @@ class AlternativeDatasetCreationAgent:
                 "feature building requires independent dataset approval"
             )
         formula = Formula.parse(definition.formula)
+        formula.require_scalar()
         source_hash = canonical_hash(raw_rows)
         lineage = registry.lineage(candidate.candidate_id, source_hash, schema_version)
         observations: list[PITObservation] = []
@@ -524,6 +525,7 @@ class AlternativeDatasetCreationAgent:
         if exposure_map.proposal.dataset_id != candidate.dataset.dataset_id:
             raise ContractError("exposure map and dataset feature have different datasets")
         formula = Formula.parse(definition.formula)
+        formula.require_scalar()
         source_hash = canonical_hash(raw_rows)
         lineage = registry.lineage(candidate.candidate_id, source_hash, schema_version)
         source_features = tuple(

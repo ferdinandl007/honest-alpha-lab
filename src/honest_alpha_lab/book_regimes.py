@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+from itertools import accumulate
 from datetime import UTC, date, datetime
 
 import numpy as np
@@ -37,6 +38,9 @@ def book_regime_analysis(content, comparisons, training_end, *, window=20, state
         features[i] = returns[i], trailing.mean(), trailing.std()
     # Feature clocks include every constituent; old late releases cannot sneak in.
     feature_clocks = [max(clocks[max(0, i-window):i+1]) for i in range(len(dates))]
+    # An HMM posterior depends on every earlier filtering observation, even
+    # after that observation leaves the current feature's rolling window.
+    filter_clocks = list(accumulate(feature_clocks, max))
     end = date.fromisoformat(training_end)
     test_start = min(date.fromisoformat(item["day"]) for comparison in comparisons.values()
                      for item in comparison["metrics"]["daily"])
@@ -52,6 +56,7 @@ def book_regime_analysis(content, comparisons, training_end, *, window=20, state
         return {"status": "insufficient", "reason": "no out-of-sample market sessions", "methods": []}
     results = []
     for method in ("hmm", "gaussian_mixture"):
+        probability_clocks = filter_clocks if method == "hmm" else feature_clocks
         model = FittedRegimeModel(RegimeConfig(method=method, states=states))
         try:
             model.fit(tuple(dates[i] for i in train), features[train])
@@ -71,7 +76,7 @@ def book_regime_analysis(content, comparisons, training_end, *, window=20, state
                     missing.append(day.isoformat())
                     continue
                 i = dates.index(day) - 1
-                if i <= stop or feature_clocks[i] >= datetime.combine(day, datetime.min.time(), UTC):
+                if i <= stop or probability_clocks[i] >= datetime.combine(day, datetime.min.time(), UTC):
                     missing.append(day.isoformat())
                     continue
                 p = probabilities[lookup[dates[i]]]

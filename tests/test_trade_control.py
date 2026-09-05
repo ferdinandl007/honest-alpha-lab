@@ -77,6 +77,82 @@ def test_auto_daily_cap_and_changed_ids(tmp_path):
         service.propose(proposal("2", quantity=1))
 
 
+def test_ready_queue_does_not_use_truncated_display_history(tmp_path):
+    service = control(tmp_path)
+    service.propose(proposal("old-approved", side="SELL"))
+    service.review("old-approved", approve=True)
+    for index in range(200):
+        service.propose(proposal(f"new-pending-{index}"))
+    assert "old-approved" not in {p["id"] for p in service.status()["proposals"]}
+    results = service.dispatch_ready()
+    assert results == [{"id": "old-approved", "result": {
+        "state": "shadow_recorded", "note": "Intent only; fills require the separate paper book."
+    }}]
+
+
+def test_ready_batch_filters_ineligible_orders_before_limit(tmp_path):
+    service = control(tmp_path, max_daily_notional=100000)
+    for index in range(205):
+        service.propose(proposal(f"ready-{index}"))
+        service.review(f"ready-{index}", approve=True)
+    first = service.dispatch_ready()
+    second = service.dispatch_ready()
+    assert len(first) == 200 and len(second) == 5
+    assert first[0]["id"] == "ready-0"
+    assert len({r["id"] for r in first + second}) == 205
+    assert service.dispatch_ready() == []
+
+
+def test_stale_quotes_and_policy_revisions_cannot_starve_ready_batch(tmp_path, monkeypatch):
+    import honest_alpha_lab.trade_control as module
+
+    now = datetime.now(UTC).timestamp()
+    monkeypatch.setattr(module, "_now", lambda: now)
+    service = control(tmp_path, max_daily_notional=100000)
+    for index in range(201):
+        service.propose(proposal(f"stale-{index}", quote_at=datetime.fromtimestamp(now, UTC).isoformat()))
+        service.review(f"stale-{index}", approve=True)
+    now += 61
+    service.propose(proposal("fresh", quote_at=datetime.fromtimestamp(now, UTC).isoformat()))
+    service.review("fresh", approve=True)
+    assert [r["id"] for r in service.dispatch_ready()] == ["fresh"]
+
+
+def test_approval_authorizes_dispatch_after_resume(tmp_path):
+    service = control(tmp_path)
+    service.halt(True)
+    service.propose(proposal())
+    service.review("intent", approve=True)
+    assert "error" in service.dispatch_ready()[0]["result"]
+    service.halt(False)
+    assert service.dispatch_ready()[0]["result"]["state"] == "shadow_recorded"
+
+
+def test_exhausted_book_cannot_starve_another_book(tmp_path):
+    service = control(tmp_path, approval_required=False, max_daily_notional=500)
+    service.propose(proposal("exhaust", quantity=5))
+    service.dispatch("exhaust")
+    for index in range(200):
+        service.propose(proposal(f"over-budget-{index}"))
+    service.configure_book("other", policy(approval_required=False))
+    service.propose(proposal("other-ready", book="other"))
+    assert [r["id"] for r in service.dispatch_ready()] == ["other-ready"]
+    assert service.dispatch_ready() == []
+
+
+def test_unarmed_book_cannot_starve_shadow_book(tmp_path, monkeypatch):
+    service = control(tmp_path)
+    monkeypatch.setenv("HAL_ENABLE_LIVE_TRADING", LIVE_ARMING)
+    service.configure_book("live-fixture", policy(mode="live"))
+    for index in range(200):
+        service.propose(proposal(f"live-{index}", book="live-fixture"))
+        service.review(f"live-{index}", approve=True)
+    monkeypatch.delenv("HAL_ENABLE_LIVE_TRADING")
+    service.propose(proposal("shadow-ready"))
+    service.review("shadow-ready", approve=True)
+    assert [r["id"] for r in service.dispatch_ready()] == ["shadow-ready"]
+
+
 @pytest.mark.parametrize("changes", [{"limit_price": 200}, {"symbol": "MSFT"}, {"quantity": .5}, {"quantity": float('nan')}, {"quantity": 10}, {"quote_at": "2000-01-01T00:00:00Z"}])
 def test_invalid_risk_proposals(tmp_path, changes):
     with pytest.raises(ContractError):

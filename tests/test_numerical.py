@@ -1,6 +1,6 @@
 """Generated numerical fixtures are correctness tests, never alpha benchmarks."""
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import numpy as np
 import pytest
@@ -19,8 +19,11 @@ def fixture():
     outcomes[-2:] = np.nan
     dates = tuple(date(2020, 1, 1) + timedelta(days=i) for i in range(n))
     panel = ResearchPanel(dates, tuple(str(i) for i in range(assets)),
-                          {"x": x, "z": z, "negative_x": -x}, np.ones_like(x, dtype=bool))
-    labels = ForwardLabels(1, outcomes, tuple(i + 2 if i + 2 < n else None for i in range(n)))
+                          {"x": x, "z": z, "negative_x": -x}, np.ones_like(x, dtype=bool),
+                          open_at=tuple(datetime.combine(d, time(14), UTC) for d in dates),
+                          decision_at=tuple(datetime.combine(d, time(21), UTC) for d in dates))
+    labels = ForwardLabels.for_panel(panel, horizon=1, values=outcomes,
+                                     end_indices=tuple(i + 2 if i + 2 < n else None for i in range(n)))
     config = WalkForwardConfig(min_train_days=20, test_days=10, min_assets=4,
                                min_train_rows=40, bootstrap_samples=99)
     return panel, labels, config
@@ -51,8 +54,9 @@ def test_future_features_and_outcomes_do_not_change_earlier_fold_predictions():
         field[65:] *= -100
     outcomes = labels.values.copy()
     outcomes[65:] *= -10
-    changed_panel = ResearchPanel(panel.dates, panel.assets, fields, panel.eligible)
-    changed_labels = ForwardLabels(labels.horizon, outcomes, labels.end_indices)
+    changed_panel = replace(panel, fields=fields)
+    changed_labels = ForwardLabels.for_panel(changed_panel, horizon=labels.horizon,
+                                            values=outcomes, end_indices=labels.end_indices)
     second, changed = evaluator.evaluate(Formula.parse("x"), changed_panel, changed_labels, snapshot_hash="changed")
     np.testing.assert_allclose(predictions[:65], changed[:65], equal_nan=True)
     assert first.folds[0] == second.folds[0]
@@ -89,3 +93,36 @@ def test_conventional_model_interfaces_execute(model):
         Formula.parse("x"), panel, labels, snapshot_hash="test-only-fixture")
     assert report.model == model
     assert np.isfinite(report.rank_ic)
+
+
+def test_evaluator_rejects_unbound_reordered_or_shifted_labels():
+    panel, labels, config = fixture()
+    evaluator = WalkForwardEvaluator(config)
+    for other in (replace(panel, assets=tuple(reversed(panel.assets))),
+                  replace(panel, dates=tuple(d + timedelta(days=1) for d in panel.dates))):
+        with pytest.raises(ContractError, match="bound labels"):
+            evaluator.evaluate(Formula.parse("x"), other, labels, snapshot_hash="fixture")
+    with pytest.raises(ContractError, match="bound labels"):
+        evaluator.evaluate(Formula.parse("x"), panel,
+                           replace(labels, source_panel_hash=None), snapshot_hash="fixture")
+    with pytest.raises(ContractError, match="explicit"):
+        evaluator.evaluate(Formula.parse("x"), replace(panel, open_at=None, decision_at=None),
+                           labels, snapshot_hash="fixture")
+
+
+def test_labels_reject_understated_horizon_and_unknown_convention():
+    panel, labels, _ = fixture()
+    with pytest.raises(ContractError, match="endpoint"):
+        replace(labels, horizon=5)
+    with pytest.raises(ContractError, match="unsupported"):
+        ForwardLabels.for_panel(panel, horizon=1, values=labels.values,
+                                end_indices=labels.end_indices, convention="arbitrary")
+
+
+def test_evidence_propagates_unknown_input_clock_without_claiming_as_run():
+    panel, labels, config = fixture()
+    report, _ = WalkForwardEvaluator(config).evaluate(Formula.parse("x"), panel, labels,
+                                                     snapshot_hash="fixture")
+    assert report.schema_version == 2
+    assert report.label_source_panel_hash == panel.content_hash
+    assert report.input_provenance == {"status": "unknown"}

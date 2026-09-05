@@ -94,7 +94,7 @@ def task(context=None):
 
 def worker(tmp_path, url, mode="discovery", timeout=10):
     spec = replace(
-        CliAgentSpec.codex_research(timeout_seconds=timeout, workspace_root=tmp_path / "scratch"),
+        CliAgentSpec.codex_research(timeout_seconds=timeout, workspace_root=tmp_path / "scratch", allow_unmetered_provider=True),
         executable=sys.executable, command_prefix=("-c", FIXTURE, mode, url),
     )
     return CliSubagentWorker(AgentKind.SYMBOLIC_FACTOR, spec, FileTaskStore(tmp_path / "tasks"))
@@ -215,7 +215,7 @@ def test_rejects_scratch_inside_task_store_and_conflicting_cwd(tmp_path):
     with pytest.raises(ContractError, match="dedicated scratch"):
         replace(CliAgentSpec.codex_research(), working_directory=str(tmp_path))
     store = FileTaskStore(tmp_path / "tasks")
-    spec = CliAgentSpec.codex_research(workspace_root=store.root / "scratch")
+    spec = CliAgentSpec.codex_research(workspace_root=store.root / "scratch", allow_unmetered_provider=True)
     with pytest.raises(ContractError, match="outside the task store"):
         run(CliSubagentWorker(AgentKind.SYMBOLIC_FACTOR, spec, store), task())
 

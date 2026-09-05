@@ -54,7 +54,7 @@ def test_postgres_proposal_numerical_worker_feedback_and_duplicate(cluster, tmp_
     service = NumericalJobService(cluster.store("worker_one"), snapshot.directory.parent,
                                    tmp_path / "artifacts", lease_seconds=6)
     result = service.process_one(run_id)
-    assert result["status"] == "evaluated"
+    assert result["status"] == "evaluated", result
     assert result["financial_alpha_verified"] is False
     assert result["snapshot_purpose"] == "correctness_fixture"
     assert service.process_one(run_id) is None

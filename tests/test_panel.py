@@ -1,5 +1,6 @@
 """Numerical correctness fixtures, not financial-performance benchmarks."""
-from datetime import date, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, time, timedelta
 
 import numpy as np
 import pytest
@@ -86,6 +87,8 @@ def test_next_open_targets_exclude_decision_day_and_keep_terminal_proceeds():
     eligible = np.array([[True], [True], [True], [False], [False]])
     p = panel(stock, eligible, total_return_open=stock,
               sector_total_return_open=reference, market_total_return_open=reference)
+    p = replace(p, open_at=tuple(datetime.combine(d, time(14), UTC) for d in p.dates),
+                decision_at=tuple(datetime.combine(d, time(21), UTC) for d in p.dates))
     labels = next_open_residual_labels(p, 1, np.zeros(p.shape))
     assert labels.values[0, 0] == pytest.approx(.1)  # 200 -> 220, not 100 -> 200
     assert labels.values[1, 0] == -1  # explicit terminal loss is not deleted
@@ -109,3 +112,23 @@ def test_beta_fit_has_no_future_information_and_full_window_required():
 def test_labels_reject_made_up_end_times():
     with pytest.raises(ContractError):
         ForwardLabels(1, np.ones((2, 2)), (None, None))
+
+
+def test_execution_clocks_reject_decision_at_or_after_entry_and_naive_clocks():
+    p = panel([[1], [2], [3]])
+    opens = tuple(datetime.combine(d, time(14), UTC) for d in p.dates)
+    decisions = tuple(datetime.combine(d, time(21), UTC) for d in p.dates)
+    for late in (opens[1], opens[1] + timedelta(hours=1)):
+        with pytest.raises(ContractError, match="next open"):
+            replace(p, open_at=opens, decision_at=(late, *decisions[1:]))
+    with pytest.raises(ContractError, match="timezone-aware"):
+        replace(p, open_at=opens, decision_at=tuple(d.replace(tzinfo=None) for d in decisions))
+
+
+def test_execution_clock_allows_decision_across_utc_midnight_and_changes_identity():
+    p = panel([[1], [2], [3]])
+    opens = tuple(datetime.combine(d, time(14), UTC) for d in p.dates)
+    decisions = tuple(o + timedelta(hours=11) for o in opens)
+    timed = replace(p, open_at=opens, decision_at=decisions)
+    assert timed.decision_at[0].date() != timed.dates[0]
+    assert timed.content_hash != replace(timed, decision_at=tuple(d + timedelta(hours=1) for d in decisions)).content_hash

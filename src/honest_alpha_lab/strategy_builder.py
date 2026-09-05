@@ -13,7 +13,8 @@ Signal CSV: signal_id OR strategy_id, asset, score, available_at, snapshot_hash.
 Optional session is validated against availability. Naive clocks, duplicates,
 missing/nonfinite values and insufficient as-of coverage fail explicitly.
 
-Lag and staleness count calendar days; rebalancing counts engine sessions.
+Lag, staleness and source-age horizons count UTC calendar days; rebalancing
+counts engine sessions. Every component must satisfy both age limits at decision.
 Every required asset/component at each decision must exist: this strict missing
 policy prevents the engine carrying an old composite after a component expires.
 No broker or order-routing capability is provided by this module.
@@ -309,7 +310,8 @@ def _build_strategy_request(proposal, locked_context, output_directory):
                     for asset in assets:
                         series = observations.get((signal_id, asset), [])
                         index = bisect_left([item[0] for item in series], cutoff) - 1
-                        if index < 0 or (day - series[index][0].date()).days > locked["max_staleness_days"]:
+                        age_limit = min(locked["max_staleness_days"], blueprint.horizon_days)
+                        if index < 0 or (day - series[index][0].date()).days > age_limit:
                             raise ContractError(f"missing/stale signal {signal_id} for {asset} at {day}; missing_policy=error")
                         stamp, score, snapshot = series[index]
                         values.append(score)
@@ -370,7 +372,8 @@ def _build_strategy_request(proposal, locked_context, output_directory):
     return StrategyBuild(blueprints, _json(request), context.policy_hash, build_hash)
 
 
-def run_strategy_agent(locked_context, output_directory, *, worker=None, budget=None):
+def run_strategy_agent(locked_context, output_directory, *, worker=None, budget=None,
+                       allow_unmetered_provider=False):
     """Invoke the CLI proposal worker, validate typed findings, then run backtests.
 
     An injected worker is a trusted deployment dependency, not proposal data.
@@ -387,7 +390,8 @@ def run_strategy_agent(locked_context, output_directory, *, worker=None, budget=
     budget = budget or ResearchBudget()
     if worker is None:
         worker = CliSubagentWorker(AgentKind.STRATEGY_BUILDER,
-                                  CliAgentSpec.codex(timeout_seconds=budget.max_runtime_seconds),
+                                  CliAgentSpec.codex(timeout_seconds=budget.max_runtime_seconds,
+                                                     allow_unmetered_provider=allow_unmetered_provider),
                                   FileTaskStore(Path(output_directory) / "agent-tasks"))
     if worker.kind != AgentKind.STRATEGY_BUILDER:
         raise ContractError("strategy agent worker kind must match")

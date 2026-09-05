@@ -91,6 +91,15 @@ class Formula:
 
         return evaluate_panel(self, panel)
 
+    def require_scalar(self):
+        """Reject operators requiring a cross-section or historical series."""
+        def check(node):
+            if node.kind == "function" and node.value in {"rank", "zscore", "lag", "ts_mean", "ts_delta"}:
+                raise ContractError("feature row formulas require scalar operations; use panel evaluation for rank/history")
+            for child in node.children:
+                check(child)
+        check(self.root)
+
 
 def _canonical_node(node: Node):
     children = [_canonical_node(child) for child in node.children]
@@ -197,16 +206,18 @@ def _evaluate(node: Node, context: Mapping[str, Sequence[float]]) -> list[float]
     if node.kind == "operator":
         left, right = values
         if node.value == "/":
-            return [a / b if b else 0.0 for a, b in zip(left, right)]
+            return [a / b if b else math.nan for a, b in zip(left, right)]
         return [
             {"+": a + b, "-": a - b, "*": a * b}[node.value]
             for a, b in zip(left, right)
         ]
     name = str(node.value)
     if name == "min":
-        return [min(items) for items in zip(*values)]
+        return [min(items) if all(math.isfinite(item) for item in items) else math.nan
+                for items in zip(*values)]
     if name == "max":
-        return [max(items) for items in zip(*values)]
+        return [max(items) if all(math.isfinite(item) for item in items) else math.nan
+                for items in zip(*values)]
     if name == "rank":
         order = sorted((i for i in range(length) if math.isfinite(values[0][i])), key=lambda i: values[0][i])
         result = [math.nan] * length
@@ -225,6 +236,11 @@ def _evaluate(node: Node, context: Mapping[str, Sequence[float]]) -> list[float]
         variance = sum((value - mean) ** 2 for value in values[0]) / max(length, 1)
         scale = math.sqrt(variance) or 1.0
         return [(value - mean) / scale for value in values[0]]
+    if name == "winsorize":
+        limit = abs(values[1][0]) if values[1] else 0
+        return [max(-limit, min(limit, value))
+                if math.isfinite(value) and math.isfinite(limit) else math.nan
+                for value in values[0]]
     window = int(values[1][0]) if values[1] else 1
     if window <= 0:
         raise ContractError("time-series window must be positive")
@@ -241,7 +257,4 @@ def _evaluate(node: Node, context: Mapping[str, Sequence[float]]) -> list[float]
             / len(series[max(0, i - window + 1) : i + 1])
             for i in range(length)
         ]
-    if name == "winsorize":
-        limit = abs(values[1][0])
-        return [max(-limit, min(limit, value)) for value in series]
     raise ContractError(f"unsupported function {name!r}")

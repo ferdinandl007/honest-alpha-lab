@@ -216,6 +216,8 @@ class FeatureBuild:
         content = json.dumps(manifest, default=_json_date, sort_keys=True, allow_nan=False).encode()
         return {"manifest_hash": store.put(content), "observations_hash": observations_hash,
                 "row_count": len(self.rows), "independently_approved": False,
+                "feature_clock": self.plan.clock,
+                "retrospective_replay": self.plan.clock == "publication_replay",
                 "financial_alpha_verified": False}
 
 

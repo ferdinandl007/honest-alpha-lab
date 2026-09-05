@@ -563,7 +563,7 @@ class SemanticFactoryTests(unittest.TestCase):
     def test_catalog_tool_is_typed_and_restricted(self):
         catalog = InMemoryDatasetCatalog([self._entry()])
         router = ToolRouter()
-        router.register(ToolName.DATASET_CATALOG_SEARCH, CatalogSearchTool(catalog))
+        router.register(ToolName.DATASET_CATALOG_SEARCH, CatalogSearchTool(catalog), max_cost_usd=0)
         job = make_job(
             AgentKind.ALTERNATIVE_DATASET_CREATOR,
             snapshot(),
@@ -603,7 +603,7 @@ class SemanticFactoryTests(unittest.TestCase):
                 return ToolResult({"ok": True}, external_cost_usd=2.0)
 
         router = ToolRouter()
-        router.register(ToolName.DATASET_CATALOG_SEARCH, CostlyCatalogTool())
+        router.register(ToolName.DATASET_CATALOG_SEARCH, CostlyCatalogTool(), max_cost_usd=2)
         job = make_job(
             AgentKind.ALTERNATIVE_DATASET_CREATOR,
             snapshot(),

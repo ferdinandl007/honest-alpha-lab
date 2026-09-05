@@ -1,5 +1,27 @@
 # CLI-agent orchestration
 
+CLI launches fail closed unless trusted configuration explicitly sets
+`allow_unmetered_provider: true`. This acknowledges possible provider billing;
+it does not verify or enforce a token or dollar cap. The runner limits wall time
+to the smaller job/spec timeout and checks returned proposal counts and usage,
+but provider usage in the final response is self-reported. A zero data-cost
+budget does not mean model execution is free.
+
+For `run-symbolic` and `build-strategies`, use `--allow-unmetered-provider` only
+when accepting that risk. Campaigns use `payload.allow_unmetered_provider` in
+their immutable configuration; existing campaigns require a new version when
+changing it. Python launchers pass the same boolean to `CliAgentSpec.codex`,
+`CliAgentSpec.codex_research`, or `run_strategy_agent`. Examples default to false.
+
+Tool registration requires `max_cost_usd`, a trusted per-call upper bound
+including failure charges; audited free adapters explicitly pass zero. The
+router reserves it atomically before execution, retains uncertain charges,
+and refunds only known unused amounts after a successful audited result.
+Adapters must honor this maximum at their provider; an estimate is insufficient.
+Router accounting is in-memory and must not be treated as a durable spending
+limit across restarts. Worker `usage.data_cost_usd` excludes router charges,
+which the orchestrator adds separately.
+
 `CliSubagentWorker` makes Codex CLI (or another compatible CLI) a constrained proposal worker. Each invocation creates `var/agent-tasks/<task-id>/` (the location is configurable) containing:
 
 - `task.json`: immutable job, context hash, input snapshot, and approved logical tools;

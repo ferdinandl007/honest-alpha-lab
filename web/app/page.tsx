@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { authorizeExecution } from '@/lib/execution-authorization';
 
 type Book = { id: string; mode: string; approval_required: boolean; account_id: string; symbols: string[]; max_order_notional: number; max_daily_notional: number };
 type Proposal = { id: string; book: string; symbol: string; side: string; quantity: number; limit_price: number; rationale: string; state: string; quote_at: string };
@@ -75,7 +76,7 @@ export default function Console() {
       <span className="connection"><LockKeyhole size={15}/>{state ? 'Private operator session' : 'Not connected'}</span></header>
     <div className="console-content">
       <div className="page-heading"><div><p className="eyebrow">Research to execution</p><h1>Your books.<br/>Your final call.</h1></div>
-        <div className="safety-panel"><ShieldCheck size={21}/><div><strong>{state?.live_armed ? 'Live deployment is armed' : 'Live execution is locked'}</strong><p>{state?.halted !== false ? 'All dispatch is paused.' : 'Dispatch is enabled under each book’s policy.'} Approving a proposal does not send it.</p></div></div></div>
+        <div className="safety-panel"><ShieldCheck size={21}/><div><strong>{state?.live_armed ? 'Live deployment is armed' : 'Live execution is locked'}</strong><p>{state?.halted !== false ? 'All dispatch is paused.' : 'Dispatch is enabled under each book’s policy.'} Approval authorizes automatic submission, including after dispatch resumes. No separate Send action is required.</p></div></div></div>
 
       <section className="connection-bar" aria-label="Operator connection"><label htmlFor="token">Operator access</label>
         <Input id="token" type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="Private console token"/>
@@ -92,8 +93,8 @@ export default function Console() {
             <div className="trade-top"><div><span className="trade-symbol">{p.symbol}</span><span className="trade-side">{p.side} · {p.quantity} shares</span></div><span className={'status '+p.state}>{p.state.replaceAll('_',' ')}</span></div>
             <div className="trade-details"><span>{p.book}</span><strong>{money(p.limit_price)} limit</strong><span>{money(p.quantity*p.limit_price)} notional</span></div>
             <p>{p.rationale}</p><small>Quote: {p.quote_at} · ID: {p.id}</small>
-            <div className="trade-actions">{p.state==='pending' && <><Button disabled={busy} onClick={()=>act('review',{id:p.id,approve:true})}>Approve intent</Button><Button variant="outline" disabled={busy} onClick={()=>act('review',{id:p.id,approve:false})}>Reject</Button></>}
-              {(p.state==='approved' || p.state==='pending' && state.books.some(b=>b.id===p.book&&!b.approval_required)) && <Button disabled={busy || state.halted} variant="outline" onClick={()=>{if(state.books.some(b=>b.id===p.book&&b.mode==='live')&&!window.confirm(`REAL ORDER: ${p.side} ${p.quantity} ${p.symbol} at ${money(p.limit_price)} limit in ${p.book}. Submit to Webull?`)) return; void act('dispatch',{id:p.id});}}>Send under book policy <ArrowUpRight size={15}/></Button>}</div>
+            <div className="trade-actions">{p.state==='pending' && <><Button disabled={busy} onClick={()=>authorizeExecution(state.books.some(b=>b.id===p.book&&b.mode==='live'), `AUTHORIZE REAL ORDER: ${p.side} ${p.quantity} ${p.symbol} at ${money(p.limit_price)} limit in ${p.book}. Approval permits automatic submission to Webull, including after dispatch resumes. No separate Send action is required. Authorize?`, ()=>{void act('review',{id:p.id,approve:true});})}>Authorize execution</Button><Button variant="outline" disabled={busy} onClick={()=>act('review',{id:p.id,approve:false})}>Reject</Button></>}
+              {(p.state==='approved' || p.state==='pending' && state.books.some(b=>b.id===p.book&&!b.approval_required)) && <Button disabled={busy || state.halted} variant="outline" onClick={()=>authorizeExecution(state.books.some(b=>b.id===p.book&&b.mode==='live'), `REAL ORDER: ${p.side} ${p.quantity} ${p.symbol} at ${money(p.limit_price)} limit in ${p.book}. Submit to Webull?`, ()=>{void act('dispatch',{id:p.id});})}>Send under book policy <ArrowUpRight size={15}/></Button>}</div>
           </article>)}</div>}
         <div className="section-heading books-heading"><h2>Execution books</h2><span>Independent policies</span></div>
         {!state?.books.length ? <p className="muted-text">No execution books configured. Start with a shadow book.</p> : <div className="book-list">{state.books.map(b=><button className="book-row" key={b.id} onClick={()=>edit(b)}><div><strong>{b.id}</strong><span>{b.symbols.join(' · ')}</span></div><div><strong className={'mode-label '+b.mode}>{b.mode}</strong><span>{b.approval_required ? 'Approval required' : 'Unattended policy'} · {money(b.max_daily_notional)}/day</span></div></button>)}</div>}

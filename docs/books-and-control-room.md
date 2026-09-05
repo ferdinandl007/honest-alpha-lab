@@ -177,8 +177,11 @@ to agent jobs. The browser holds the operator token in memory, not local storage
 
 Open `http://127.0.0.1:8787`. Connect, create a **shadow** execution book, and keep
 approval required initially. Proposals carry immutable IDs, symbol/side/quantity,
-limit and reference prices, quote timestamp, book and rationale. Approval and
-submission are separate actions. Policy changes invalidate outstanding intents.
+limit and reference prices, quote timestamp, book and rationale. **Approval
+authorizes execution**: a running executor may submit an approved intent without
+a separate Send click, including after a halt is lifted. The live approval button
+asks for confirmation before granting that authority. Direct operator API clients
+must treat `approve: true` identically. Policy changes invalidate outstanding intents.
 Quotes must be no more than 60 seconds old when proposed and dispatched; stale
 intents require a fresh proposal and approval. A halt is enabled initially.
 

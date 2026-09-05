@@ -6,6 +6,7 @@ live signals or evidence that source provenance has independently been approved.
 from __future__ import annotations
 
 import io
+import json
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,9 @@ def store_predictions(snapshot, panel, predictions, strategy_id, artifacts):
     Execution applies its own conservative next-date/next-bar delay afterward.
     """
     snapshot.verify()
+    panel.require_execution_timing()
+    if panel.snapshot_hash != snapshot.snapshot_hash:
+        raise ContractError("prediction panel must be bound to the supplied snapshot")
     values = np.asarray(predictions, dtype=float)
     if values.shape != panel.shape or np.isinf(values).any() or not strategy_id:
         raise ContractError("prediction handoff requires aligned scores and a strategy identity")
@@ -28,13 +32,18 @@ def store_predictions(snapshot, panel, predictions, strategy_id, artifacts):
     if sessions.session.duplicated().any():
         raise ContractError("prediction calendar has duplicate sessions")
     clocks = {}
+    opens = {}
     for row in sessions.itertuples():
         stamp = pd.Timestamp(row.decision_at)
         if pd.isna(stamp) or stamp.tzinfo is None:
             raise ContractError("prediction decision clocks must be timezone-aware")
         clocks[row.session] = stamp.isoformat()
+        opens[row.session] = pd.Timestamp(row.open_at)
     if not set(panel.dates) <= set(clocks):
         raise ContractError("prediction sessions absent from snapshot calendar")
+    if any(pd.Timestamp(clocks[day]) != decision or opens[day] != opening
+           for day, decision, opening in zip(panel.dates, panel.decision_at, panel.open_at)):
+        raise ContractError("prediction calendar differs from its bound panel")
     frame = pd.DataFrame({"session": np.repeat(panel.dates, len(panel.assets)),
                           "asset": np.tile(panel.assets, len(panel.dates)),
                           "score": values.ravel()})
@@ -50,4 +59,6 @@ def store_predictions(snapshot, panel, predictions, strategy_id, artifacts):
             "signals_artifact_hash": signals_hash,
             "strategy_id": strategy_id,
             "prediction_timing": "retrospective_development_replay",
+            "timing_contract": "decision_before_next_open",
+            "input_provenance": json.loads(panel.provenance_json),
             "signal_rows": len(finite)}

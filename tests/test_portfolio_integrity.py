@@ -230,7 +230,9 @@ def test_open_target_precedes_later_intraday_stop():
 
 
 def test_stop_cancels_partial_entry_residual_instead_of_reopening():
-    result = run([bar(1), bar(2, volume=100), bar(3, high=101, low=90)],
+    # The residual buy at 100 is not marketable at the open; intraday stop
+    # priority must still cancel it before another intraday entry can occur.
+    result = run([bar(1), bar(2, volume=100), bar(3, open=105, high=106, low=90)],
                  sim=simulator(strategies={"s": strategy(interval=5)}, limit_valid_days=5))
     assert [(fill.day, fill.reason, fill.quantity) for fill in result.fills] == [
         (day(2), "rebalance", 1), (day(3), "stop_loss", -1),
@@ -312,8 +314,10 @@ def test_short_quantile_and_long_short_gross_budget_are_respected():
 def test_commissions_are_charged_on_entry_and_exit_and_nav_reconciles():
     result = run([bar(1), bar(2), bar(3, low=90)],
                  sim=simulator(commission_bps=100), allocation={"s": 0.5})
-    assert [fill.commission for fill in result.fills] == pytest.approx([5, 4.6])
-    assert result.nav_by_day[-1][1] == pytest.approx(950.4)
+    # Entry costs resize the next target: the opening reduction of .025 shares
+    # precedes the later stop on the remaining 4.975 shares.
+    assert [fill.commission for fill in result.fills] == pytest.approx([5, .025, 4.577])
+    assert result.nav_by_day[-1][1] == pytest.approx(950.598)
     assert result.execution_policy.commission_bps == 100
 
 
@@ -371,3 +375,81 @@ def test_nonfinite_data_and_cash_are_rejected(value):
 def test_invalid_execution_settings_are_rejected(settings):
     with pytest.raises(ContractError):
         simulator(**settings)
+
+
+@pytest.mark.parametrize("side,opening,high,low,close,expected", [
+    (StrategySide.LONG_ONLY, 105, 120, 100, 110, 1025),
+    (StrategySide.SHORT_ONLY, 95, 100, 80, 90, 1025),
+])
+def test_opening_liquidation_precedes_later_profit_target(side, opening, high, low, close, expected):
+    result = run(
+        [bar(1), bar(2), bar(3, open=opening, high=high, low=low, close=close)],
+        sim=simulator(strategies={"s": strategy(side=side, horizon=1)}),
+        allocation={"s": .5},
+    )
+    assert [fill.reason for fill in result.fills] == ["rebalance", "rebalance"]
+    assert result.fills[-1].price == opening
+    assert result.fills[-1].quantity == -result.fills[0].quantity
+    assert result.nav_by_day[-1][1] == expected
+
+
+def test_opening_partial_reduction_leaves_only_remainder_for_intraday_stop():
+    sim = simulator()
+    positions = {"A": _Position(10, 100)}
+    bars = {"A": bar(3, open=105, high=106, low=90, close=100, volume=2000)}
+    used = {}
+    cash, opening, remaining = sim._fill_orders(day(3), 2, bars,
+        [_LimitOrder("A", -4, 100, 2, "rebalance")], positions, 0, [], used, open_only=True)
+    cash, exits = sim._apply_protective_exits(day(3), bars, positions, cash, used)
+    assert remaining == []
+    assert [(f.quantity, f.price) for f in opening + exits] == [(-4, 105), (-6, 92)]
+    assert positions == {}
+    assert cash == 972
+    assert used["A"] == 972
+
+
+@pytest.mark.parametrize("interval", [1, 10])
+@pytest.mark.parametrize("price,volume", [(200, 1e6), (250, 1e6), (250, 0)])
+def test_insolvency_fails_on_every_day_independent_of_rebalance(interval, price, volume):
+    with pytest.raises(ContractError, match="NAV is nonpositive"):
+        run([bar(1), bar(2), bar(3, open=price, high=price, low=price, close=price, volume=volume)],
+            sim=simulator(strategies={"s": strategy(side=StrategySide.SHORT_ONLY, interval=interval)}))
+
+
+def test_opening_residual_entry_precedes_later_stop_with_shared_capacity():
+    result = run([bar(1), bar(2, volume=100), bar(3, low=90, volume=1000), bar(4)],
+                 sim=simulator(strategies={"s": strategy(interval=5)}, limit_valid_days=5))
+    third_day = [fill for fill in result.fills if fill.day == day(3)]
+    assert third_day[0].reason == "rebalance"
+    assert third_day[0].quantity == 9
+    assert third_day[1].reason == "stop_loss"
+    assert sum(abs(fill.quantity * fill.price) for fill in third_day) == pytest.approx(1000)
+    assert result.fills[-1].day == day(4)
+    assert result.fills[-1].reason == "stop_loss"
+    assert sum(fill.quantity for fill in result.fills) == pytest.approx(0)
+
+
+def test_opening_and_intraday_buys_share_cash_without_sale_proceeds():
+    result = run([bar(1, "A"), bar(1, "B"), bar(2, "A"),
+                  bar(2, "B", open=105, high=106, low=99, close=100)],
+                 [signal(0, "A", 1), signal(0, "B", 1)],
+                 sim=simulator(long_quantile=1, commission_bps=100))
+    assert sum(fill.quantity * fill.price + fill.commission for fill in result.fills) == pytest.approx(1000)
+    assert result.nav_by_day[-1][1] == pytest.approx(1000 / 1.01)
+
+
+def test_paper_ingest_rolls_back_insolvent_nonrebalance_day(tmp_path):
+    from honest_alpha_lab import paper_trading as paper
+    from test_paper_trading import make_paper_config, signal_event, bar_event
+
+    config = make_paper_config()
+    config["strategies"]["s"].update(side="short_only", rebalance_days=10)
+    config["execution_policy"].update(commission_bps=0, slippage_bps=0, annual_borrow_rate=0)
+    path = tmp_path / "insolvency.sqlite"
+    paper.create_book(path, "b", config)
+    paper.ingest_book(path, "b", signal_event())
+    paper.ingest_book(path, "b", bar_event(2))
+    before = paper.ingest_book(path, "b", bar_event(3))
+    with pytest.raises(ContractError, match="NAV is nonpositive"):
+        paper.ingest_book(path, "b", bar_event(4, open=250, high=250, low=250, close=250))
+    assert paper.book_status(path, "b") == before

@@ -2,6 +2,16 @@
 
 **Current-state guide · 5 September 2026**
 
+### Money-safety update
+
+The [money-safety review and migration guide](money-safety-review.md) records
+the corrected accounting, timing, authorization and spending-control paths.
+Reimport legacy numerical snapshots with explicit exchange opens and rerun
+affected research; do not reuse old backtest results as corrected evidence.
+CLI agents now refuse to launch until the operator explicitly acknowledges that
+provider dollar/token caps are not enforced by this runner. Live trading remains
+off by default and is not certified ready for real money.
+
 ## 1. What this system is
 
 Honest Alpha Lab is a research workbench for finding stock-market signals and

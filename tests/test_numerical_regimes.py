@@ -21,8 +21,9 @@ def market_fixture():
     panel, labels, config = fixture()
     rng = np.random.default_rng(19)
     prices = 100 * np.exp(np.cumsum(rng.normal(0, .01, panel.shape), axis=0))
-    panel = ResearchPanel(panel.dates, panel.assets,
-                          {**panel.fields, "total_return_close": prices}, panel.eligible)
+    panel = replace(panel, fields={**panel.fields, "total_return_close": prices})
+    labels = ForwardLabels.for_panel(panel, horizon=labels.horizon, values=labels.values,
+                                     end_indices=labels.end_indices)
     return panel, labels, replace(config, min_train_days=35, regime_feature_window=3)
 
 
@@ -74,15 +75,18 @@ def test_market_features_and_oos_probabilities_are_prefix_invariant():
     panel, labels, config = market_fixture()
     source, features = causal_market_features(panel, window=3)
     prefix = ResearchPanel(panel.dates[:65], panel.assets,
-                           {k: v[:65] for k, v in panel.fields.items()}, panel.eligible[:65])
+                           {k: v[:65] for k, v in panel.fields.items()}, panel.eligible[:65],
+                           open_at=panel.open_at[:65], decision_at=panel.decision_at[:65])
     prefix_source, prefix_features = causal_market_features(prefix, window=3)
     assert source == prefix_source == "total_return_close"
     np.testing.assert_allclose(features[:65], prefix_features, equal_nan=True)
     first, _ = evaluate(panel, labels, config)
     fields = {k: v.copy() for k, v in panel.fields.items()}
     fields["total_return_close"][65:] *= 100
-    changed_panel = ResearchPanel(panel.dates, panel.assets, fields, panel.eligible)
-    second, _ = evaluate(changed_panel, labels, config)
+    changed_panel = replace(panel, fields=fields)
+    changed_labels = ForwardLabels.for_panel(changed_panel, horizon=labels.horizon,
+                                            values=labels.values, end_indices=labels.end_indices)
+    second, _ = evaluate(changed_panel, changed_labels, config)
     for before, after in zip(first.regime_reports, second.regime_reports, strict=True):
         if before.training_date_indices[-1] >= 65:
             continue
@@ -117,7 +121,8 @@ def test_unlabeled_tail_and_future_label_missingness_do_not_remove_predictions()
     # suppress this fold's predictions nor entirely unlabeled subsequent folds.
     cutoff = original.folds[2].test_start_index
     outcomes[cutoff:] = np.nan
-    changed_labels = ForwardLabels(labels.horizon, outcomes, labels.end_indices)
+    changed_labels = ForwardLabels.for_panel(panel, horizon=labels.horizon, values=outcomes,
+                                            end_indices=labels.end_indices)
     changed, predictions = evaluate(panel, changed_labels, config)
     end = original.folds[2].test_end_index + 1
     np.testing.assert_allclose(scores[:end], predictions[:end], equal_nan=True)
@@ -149,7 +154,9 @@ def test_missing_embargo_features_are_disclosed_and_not_silently_skipped():
     # First training interval ends at 34, first test starts at 42.
     prices[38] = np.nan
     fields["total_return_close"] = prices
-    panel = ResearchPanel(panel.dates, panel.assets, fields, panel.eligible)
+    panel = replace(panel, fields=fields)
+    labels = ForwardLabels.for_panel(panel, horizon=labels.horizon, values=labels.values,
+                                     end_indices=labels.end_indices)
     report, _ = evaluate(panel, labels, config)
     for item in report.regime_reports[:2]:
         assert item.status == "missing"

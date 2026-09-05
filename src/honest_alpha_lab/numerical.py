@@ -5,6 +5,7 @@ Its fixtures test calculations only; financial benchmarks must use verified data
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from importlib.metadata import version
@@ -97,6 +98,10 @@ class DevelopmentReport:
     scope: str = "development"
     portfolio_performance_verified: bool = False
     regime_reports: tuple[RegimeFoldReport, ...] = ()
+    schema_version: int = 2
+    timing_contract: str = "decision_before_next_open"
+    label_source_panel_hash: str = ""
+    input_provenance: dict | None = None
 
     @property
     def report_hash(self):
@@ -174,6 +179,12 @@ class WalkForwardEvaluator:
                  *, snapshot_hash: str, baseline: Mapping[str, Formula] | None = None):
         if not snapshot_hash or labels.values.shape != panel.shape:
             raise ContractError("evaluation needs snapshot identity and aligned labels")
+        panel.require_execution_timing()
+        if (labels.source_panel_hash != panel.content_hash
+                or labels.convention != "next_open_to_open_residual"):
+            raise ContractError("evaluation requires bound labels matching the panel and supported convention")
+        if panel.snapshot_hash is not None and panel.snapshot_hash != snapshot_hash:
+            raise ContractError("evaluation snapshot identity differs from the panel")
         config = self.config
         baseline = dict(baseline or {})
         score = formula.evaluate_panel(panel)
@@ -271,6 +282,8 @@ class WalkForwardEvaluator:
         measured_count = int(np.count_nonzero(np.isfinite(prediction_panel[first_test:])))
         report = DevelopmentReport(
             formula_hash=formula.formula_hash, snapshot_hash=snapshot_hash,
+            label_source_panel_hash=labels.source_panel_hash,
+            input_provenance=json.loads(panel.provenance_json),
             panel_hash=panel.content_hash, labels_hash=labels.content_hash,
             policy_hash=canonical_hash(asdict(config)),
             library_hash=canonical_hash({name: baseline[name].formula_hash for name in sorted(baseline)}),

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from datetime import date, datetime, timezone
-from enum import Enum
 import hashlib
 import json
+import math
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
@@ -45,6 +46,22 @@ class AgentRunStatus(str, Enum):
 
 class ContractError(ValueError):
     """Raised when a trust-boundary contract is invalid."""
+
+
+def require_number(value: object, name: str, *, positive: bool = False) -> None:
+    if type(value) not in (int, float):
+        raise ContractError(f"{name} must be a finite number")
+    try:
+        valid = math.isfinite(value) and (value > 0 if positive else value >= 0)
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise ContractError(f"{name} must be finite and {'positive' if positive else 'nonnegative'}")
+
+
+def require_count(value: object, name: str, *, positive: bool = False) -> None:
+    if type(value) is not int or (value <= 0 if positive else value < 0):
+        raise ContractError(f"{name} must be a {'positive' if positive else 'nonnegative'} integer")
 
 
 def utc_now() -> datetime:
@@ -132,14 +149,10 @@ class ResearchBudget:
     max_agent_tokens: int = 100_000
 
     def __post_init__(self) -> None:
-        if (
-            self.max_trials <= 0
-            or self.max_runtime_seconds <= 0
-            or self.max_agent_tokens <= 0
-        ):
-            raise ContractError("research budgets must be positive")
-        if self.max_data_cost_usd < 0:
-            raise ContractError("data cost cannot be negative")
+        require_count(self.max_trials, "max_trials", positive=True)
+        require_count(self.max_agent_tokens, "max_agent_tokens", positive=True)
+        require_number(self.max_runtime_seconds, "max_runtime_seconds", positive=True)
+        require_number(self.max_data_cost_usd, "max_data_cost_usd")
 
 
 @dataclass(frozen=True, slots=True)

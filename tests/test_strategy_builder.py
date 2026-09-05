@@ -151,7 +151,7 @@ def test_future_append_preserves_scores_and_training(context, tmp_path):
 def test_operational_agent_uses_cli_protocol_then_trusted_compiler(context, tmp_path):
     fixture = Path(__file__).parent / "fixtures" / "fake_strategy_agent.py"
     worker = CliSubagentWorker(AgentKind.STRATEGY_BUILDER,
-                              CliAgentSpec("fake", sys.executable, (str(fixture),)),
+                              CliAgentSpec("fake", sys.executable, (str(fixture),), allow_unmetered_provider=True),
                               FileTaskStore(tmp_path / "tasks"))
     result = run_strategy_agent(context, tmp_path / "built", worker=worker)
     assert result["status"] == "research_only"
@@ -214,3 +214,30 @@ def test_holdout_bars_cannot_change_generated_training_returns(context, tmp_path
     context["bars_sha256"] = write_csv(path, ",".join(content[0]), [list(r.values()) for r in content])
     second = build_strategy_request(proposal(), context, tmp_path / "second")
     assert Path(first.request["training_returns_csv"]).read_bytes() == Path(second.request["training_returns_csv"]).read_bytes()
+
+
+def test_source_age_horizon_cannot_be_refreshed_by_compilation(context, tmp_path):
+    context["allowed_horizons"] = [1, 3]
+    context["max_staleness_days"] = 30
+    with pytest.raises(ContractError, match="missing/stale"):
+        build_strategy_request(proposal(horizon_days=1), context, tmp_path / "expired")
+    # Jan 1 and Jan 7 source observations remain valid through the third
+    # calendar day, inclusive; the final bar is not a new decision.
+    build = build_strategy_request(proposal(horizon_days=3), context, tmp_path / "boundary")
+    assert rows(build.request["signals_csv"])
+    context["max_staleness_days"] = 2
+    with pytest.raises(ContractError, match="missing/stale"):
+        build_strategy_request(proposal(horizon_days=3), context, tmp_path / "locked-expired")
+
+
+def test_one_day_horizon_accepts_fresh_components_in_utc(context, tmp_path):
+    path = Path(context["signal_catalog"]["a"]["csv_path"])
+    digest = write_csv(path, "signal_id,asset,score,available_at,snapshot_hash", [
+        [name, asset, score, f"2020-01-{day:02}T01:00:00+02:00", "fresh"]
+        for name in ("a", "b") for asset, score in (("A", 1), ("B", 2))
+        for day in (2, 3, 4, 8, 9, 10)])
+    for source in context["signal_catalog"].values():
+        source["sha256"] = digest
+    context["allowed_horizons"] = [1]
+    build = build_strategy_request(proposal(horizon_days=1), context, tmp_path / "fresh")
+    assert build.run_backtest()["comparisons"]["equal_weight"]["result"]["fills"]

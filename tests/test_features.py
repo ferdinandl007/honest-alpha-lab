@@ -208,12 +208,13 @@ def test_payload_cli_parquet_snapshot_and_dsl(tmp_path, inputs):
     universe = tmp_path / "universe.parquet"
     pd.DataFrame([{"asset": "A", "valid_from": date(2024, 1, 1), "valid_to": None, "known_at": clock(1)}]).to_parquet(universe)
     sessions = tmp_path / "sessions.parquet"
-    pd.DataFrame([asdict(item) for item in inputs[3]]).to_parquet(sessions)
+    pd.DataFrame([{**asdict(item), "open_at": clock(item.session.day, 14)} for item in inputs[3]]).to_parquet(sessions)
     declaration = SnapshotDeclaration("fixture", "fixture", "fixture", "fixture", "fixture", "fixture",
                                       "not_prices", "not_applicable", "fixture", clock(8).isoformat(),
                                       purpose="correctness_fixture")
     snapshot = ParquetSnapshot.create(tmp_path / "snapshots", observations=observations,
-                                      universe=universe, sessions=sessions, declaration=declaration)
+                                      universe=universe, sessions=sessions, declaration=declaration,
+                                      feature_manifests={"demand": hashes["manifest_hash"]}, feature_artifacts=artifacts)
     panel = snapshot.panel(fields=("demand",))
     assert Formula.parse("* demand 2").evaluate_panel(panel).ravel().tolist() == [12, 12, 12, 12]
     manifest = json.loads(artifacts.get(hashes["manifest_hash"]))

@@ -210,3 +210,35 @@ def test_invalid_market_rows_fail_before_model_fit(market, models, fault):
     with pytest.raises(ContractError):
         analyze(market)
     assert models == []
+
+
+def test_hmm_late_prefix_remains_unavailable_after_feature_window(market, monkeypatch):
+    class RecurrentModel:
+        def __init__(self, config):
+            self.config = config
+            self.converged = True
+
+        def fit(self, dates, features):
+            return self
+
+        def predict_proba(self, dates, features):
+            values = np.asarray(features)[:, 0]
+            if self.config.method == "hmm":
+                values = np.cumsum(values)
+            p = .5 + .4 * np.tanh(values)
+            return np.column_stack((p, 1 - p))
+
+    monkeypatch.setattr(book_regimes, "FittedRegimeModel", RecurrentModel)
+    market[22]["available_at"] = f"{market[30]['day']}T00:00:00+00:00"
+    books = comparisons(market[27]["day"], market[30]["day"], market[31]["day"])
+    before = analyze(market, books)
+    market[22]["close"] *= 1.2
+    after = analyze(market, books)
+    for output in (before, after):
+        hmm, mixture = [method["comparisons"]["fixture_book"] for method in output["methods"]]
+        assert hmm["missing_dates"] == [market[27]["day"], market[30]["day"]]
+        assert [row["day"] for row in hmm["observations"]] == [market[31]["day"]]
+        assert mixture["missing_dates"] == []
+    assert before["methods"][1] == after["methods"][1]
+    assert (before["methods"][0]["comparisons"]["fixture_book"]["observations"] !=
+            after["methods"][0]["comparisons"]["fixture_book"]["observations"])
